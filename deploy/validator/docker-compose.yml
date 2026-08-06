@@ -1,0 +1,38 @@
+services:
+  validator:
+    image: ${ENCLAVE_IMAGE:-ghcr.io/enclave/enclave-validator:latest}
+    container_name: enclave-validator
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      ENCLAVE_STATE_ROOT: /var/lib/enclave
+      ENCLAVE_LEDGER_ROOT: /var/lib/enclave/ledger
+      ENCLAVE_SOCKET_ROOT: /var/lib/enclave/sockets
+      ENCLAVE_PRICE_SNAPSHOT: /var/lib/enclave/prices.json
+    volumes:
+      - enclave-state:/var/lib/enclave
+      - ${BITTENSOR_DIR:-~/.bittensor}:/root/.bittensor:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.lifecycle.pre-update: "/usr/local/bin/enclave-pre-update"
+      com.centurylinklabs.watchtower.lifecycle.pre-update-timeout: "5"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: enclave-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_LIFECYCLE_HOOKS: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "false"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-300}"
+      TZ: UTC
+
+volumes:
+  enclave-state:

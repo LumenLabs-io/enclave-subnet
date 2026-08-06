@@ -8,8 +8,10 @@ from enclave.validator.round import (
     publish,
     score_submissions,
 )
+from enclave.validator.state import LockState, read_lock, round_in_flight, round_lock
 
 __all__ = [
+    "LockState",
     "RoundPlan",
     "Submission",
     "ValidatorSettings",
@@ -17,5 +19,8 @@ __all__ = [
     "evaluate_submission",
     "plan_round",
     "publish",
+    "read_lock",
+    "round_in_flight",
+    "round_lock",
     "score_submissions",
 ]

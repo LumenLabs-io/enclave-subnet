@@ -6,12 +6,14 @@ from pathlib import Path
 import typer
 
 from enclave.chain.commitment import SubmissionCommitment, SubmissionReveal, verify_reveal
+from enclave.constants import MECHANISM_VERSION
 from enclave.environments.prf import AuditKey
 from enclave.environments.registry import families as known_families
 from enclave.ledger.store import Ledger
 from enclave.relay.pricing import PriceSnapshot
 from enclave.validator.config import ValidatorSettings
 from enclave.validator.round import plan_round
+from enclave.validator.state import read_lock, round_in_flight
 
 app = typer.Typer(add_completion=False, help="Operate an Enclave validator.")
 
@@ -44,6 +46,28 @@ def preflight() -> None:
         typer.echo(f"default model {settings.default_model} is not priced", err=True)
         raise typer.Exit(code=1)
     typer.echo("preflight ok")
+
+
+@app.command()
+def status(
+    state_root: Path = typer.Option(Path("./state"), "--state-root"),
+    quiet: bool = typer.Option(False, "--quiet", help="Print nothing; signal by exit code"),
+) -> None:
+    lock = read_lock(state_root)
+    in_flight = round_in_flight(state_root)
+
+    if not quiet:
+        typer.echo(f"mechanism_version  {MECHANISM_VERSION}")
+        typer.echo(f"state_root         {state_root}")
+        if lock is None:
+            typer.echo("round              idle")
+        else:
+            held = "held" if lock.holder_alive else "stale"
+            typer.echo(f"round              {lock.round_id} ({held}, pid {lock.pid})")
+            typer.echo(f"opened_at          {lock.opened_at}")
+
+    if in_flight:
+        raise typer.Exit(code=75)
 
 
 @app.command("open-round")

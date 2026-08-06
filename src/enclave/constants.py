@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Final
 
 PROTOCOL_VERSION: Final = 1
+MECHANISM_VERSION: Final = 1
 ROUND_SCHEMA_VERSION: Final = 1
 RELAY_PROTOCOL_VERSION: Final = 1
 PRICE_SNAPSHOT_SCHEMA_VERSION: Final = 1

@@ -115,6 +115,53 @@ enclave-score score  ./state/ledger round-042 --json
 
 `excluded` deserves particular attention. It counts instances dropped as infrastructure faults, and a number that climbs is a validator problem being quietly absorbed rather than charged to submissions.
 
+## Staying current
+
+Every validator must run the same mechanism code. Two validators folding the same evidence into different numbers is a consensus divergence, and consensus penalises both of them for it, so falling behind on a scoring change costs money rather than merely being untidy.
+
+The deploy in `deploy/validator/` runs the validator as a container alongside Watchtower, which pulls a new image and recreates the container in place.
+
+```sh
+cd deploy/validator
+docker compose up -d
+```
+
+`WATCHTOWER_POLL_INTERVAL` defaults to 300 seconds. That is the real convergence window; do not assume a longer one from habit.
+
+### Updates never land mid round
+
+An update that swapped the scoring code halfway through a round would produce a ledger whose early records were folded by one mechanism and whose later records were folded by another. That round would be incoherent and unreproducible.
+
+The validator therefore takes a lock while a round is in flight, and Watchtower is configured with a pre-update lifecycle hook that reads it:
+
+```text
+WATCHTOWER_LIFECYCLE_HOOKS=true
+com.centurylinklabs.watchtower.lifecycle.pre-update=/usr/local/bin/enclave-pre-update
+```
+
+The hook runs `enclave-validator status --quiet`, which exits `75` while a round is in flight. A non-zero pre-update exit tells Watchtower to skip this container, so the update simply waits for the next poll and lands once the round is finished. The hook is deliberately the only thing standing between an update and a corrupted round, so it fails closed: if it cannot determine the state, it defers.
+
+Check the state yourself at any time:
+
+```sh
+enclave-validator status
+```
+
+```text
+mechanism_version  1
+state_root         ./state
+round              round-042 (held, pid 1381)
+opened_at          2026-01-01T00:00:00Z
+```
+
+A lock whose holding process has died is ignored, and any lock older than 24 hours is treated as abandoned, so a validator killed mid round does not block its own updates forever. If you need to clear one by hand, delete `state/round.lock` while no round is running.
+
+### Pinning a version
+
+`ENCLAVE_IMAGE` selects the image. Leaving it unset tracks `:latest`, which is what keeps the field converged. Pinning it to a digest freezes this validator, which is occasionally the right call while debugging but is not a state to sit in, because a validator running an older mechanism scores differently from the field and is clipped for it.
+
+Two things worth knowing about this arrangement. The validator container mounts the Docker socket because it launches submission sandboxes, and Watchtower mounts it because that is how it recreates containers. Anyone who can push the image tag therefore has root equivalent control of every validator host that tracks it, so treat the registry credential as a production deploy key. Watchtower also swaps the image and nothing else: it does not re-read `.env` or change the compose topology, so a configuration change still needs `docker compose up -d` by hand.
+
 ## Cadence
 
 Scoring and weight setting are separate concerns and should not share a loop. A sweep across a full field can take hours; a weight cadence tied to it starves chain updates whenever the queue is busy. Weight publication should run on its own schedule, bounded below by the subnet's weight rate limit, and publish the most recent complete fold rather than waiting for the sweep in flight.
