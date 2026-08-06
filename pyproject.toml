@@ -93,6 +93,7 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.ruff.lint.per-file-ignores]
 "src/enclave/errors.py" = ["N801", "N818"]
 "src/enclave/relay/meter.py" = ["N818"]
+"src/enclave/chain/payment.py" = ["N818"]
 "src/enclave/scoring/records.py" = ["S105"]
 "src/enclave/*/cli.py" = ["B008"]
 "tests/*" = ["S101", "ANN", "D"]

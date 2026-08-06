@@ -7,6 +7,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Any
 
+from enclave.chain.payment import PaymentProof
 from enclave.constants import MAX_ONCHAIN_PAYLOAD_BYTES, PROTOCOL_VERSION
 from enclave.errors import ChainError
 from enclave.sandbox.spec import DIGEST_PATTERN
@@ -44,6 +45,7 @@ class SubmissionReveal:
     nonce: str
     source_url: str = ""
     licence: str = ""
+    payment: PaymentProof | None = None
 
     def __post_init__(self) -> None:
         if not DIGEST_PATTERN.match(self.image):
@@ -64,6 +66,7 @@ class SubmissionReveal:
             "nonce": self.nonce,
             "source_url": self.source_url,
             "licence": self.licence,
+            "payment": None if self.payment is None else self.payment.as_json(),
         }
 
 

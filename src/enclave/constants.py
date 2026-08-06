@@ -3,6 +3,12 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Final
 
+NETUID: Final = 92
+SUBTENSOR_NETWORK: Final = "finney"
+
+RAO_PER_TAO: Final = 1_000_000_000
+UPLOAD_FEE_RAO: Final = 35_000_000
+
 PROTOCOL_VERSION: Final = 1
 MECHANISM_VERSION: Final = 1
 ROUND_SCHEMA_VERSION: Final = 1

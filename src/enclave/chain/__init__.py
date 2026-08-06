@@ -11,6 +11,14 @@ from enclave.chain.commitment import (
     commit,
     verify_reveal,
 )
+from enclave.chain.payment import (
+    PaymentProof,
+    PaymentReader,
+    PaymentRejected,
+    Transfer,
+    fee_tao,
+    verify_payment,
+)
 
 __all__ = [
     "BittensorChain",
@@ -18,8 +26,14 @@ __all__ = [
     "MetagraphView",
     "Neuron",
     "OfflineChain",
+    "PaymentProof",
+    "PaymentReader",
+    "PaymentRejected",
     "SubmissionCommitment",
     "SubmissionReveal",
+    "Transfer",
     "commit",
+    "fee_tao",
+    "verify_payment",
     "verify_reveal",
 ]

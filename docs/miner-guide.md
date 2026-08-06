@@ -84,7 +84,21 @@ enclave-miner isolation <image@sha256:…>  # the sandbox it runs in
 
 Your image must also be reproducible from published source under a stated licence, and under the published size ceiling. An image carrying a precomputed index over the environment's asset space is doing at build time what the score exists to price at run time.
 
-## 4. Commit before the deadline
+## 4. Pay the submission fee
+
+Every submission costs **0.035 TAO**, transferred to the published treasury address before you reveal.
+
+```sh
+btcli wallet transfer --amount 0.035 --dest <treasury-ss58> --wallet.name <your-coldkey>
+```
+
+Record the block hash, block number, and extrinsic index of that transfer. They go into the reveal, and every validator checks them against the chain independently: exact amount, correct destination, successful `transfer_keep_alive`, and a signer that owned your hotkey at that block. A proof cannot be reused by a second submission.
+
+Pay from the coldkey that owns your submitting hotkey. A payment from any other wallet verifies as somebody else's payment and your submission is not entered.
+
+There are no refunds, so check the destination before you send.
+
+## 5. Commit before the deadline
 
 ```sh
 enclave-miner commit-image <hotkey> <image@sha256:…>
@@ -94,7 +108,7 @@ This prints two things. Publish the commitment on chain before submissions close
 
 The order matters and it protects you. The round's seed is fixed only after submissions close, so nobody can build against the instances they will face. Commit and reveal means nobody can watch your digest and copy it before the deadline either.
 
-## 5. Iterate
+## 6. Iterate
 
 You cannot see the round's instances before they exist, but the mechanism is fully deterministic, so you can generate your own:
 

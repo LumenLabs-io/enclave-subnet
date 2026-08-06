@@ -12,6 +12,16 @@ The image MUST be reproducible from published source under a stated licence. Thi
 
 The image MUST NOT exceed the published size ceiling. An image carrying a large precomputed index over the environment's asset space is doing at build time what the score exists to price at run time.
 
+## The submission fee
+
+Every submission costs **0.035 TAO**, paid on chain before the reveal is accepted. The fee is per submission, not per round: every version you upload pays again.
+
+The payment MUST be a successful `Balances.transfer_keep_alive` of exactly 35,000,000 rao to the published treasury address, signed by the coldkey that owns the submitting hotkey at the payment block. The reveal carries `(block_hash, block_number, extrinsic_index)` as proof.
+
+Verification is a property of the chain rather than of a server. Every validator independently checks the canonical block hash, the call type, the destination, the exact amount, the signer's ownership of the hotkey, and that the proof has not already been spent by another submission. A proof that fails any of those is not a rejected submission, it is an absent one: the hotkey does not enter the participant set for that round.
+
+There are no refunds. The fee exists to price the evaluation a submission consumes, and an evaluation is consumed whether the submission wins or crashes. What the fee buys is a place in the frozen set, not an outcome.
+
 ## The submission is an agent, not a middleware
 
 The container receives a task and drives it to completion. It is not a memory layer plugged into a validator-supplied agent loop.

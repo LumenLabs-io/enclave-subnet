@@ -6,6 +6,7 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from enclave.constants import NETUID
 from enclave.errors import ConfigError
 
 __all__ = ["ValidatorSettings"]
@@ -19,7 +20,7 @@ class ValidatorSettings(BaseSettings):
         extra="forbid",
     )
 
-    netuid: int = Field(description="Subnet identifier this validator serves")
+    netuid: int = Field(default=NETUID, description="Subnet identifier this validator serves")
     wallet_name: str = Field(default="validator")
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")

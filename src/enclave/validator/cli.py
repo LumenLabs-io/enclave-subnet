@@ -24,7 +24,7 @@ def _snapshot(path: Path) -> PriceSnapshot:
 
 @app.command()
 def preflight() -> None:
-    settings = ValidatorSettings()  # type: ignore[call-arg]
+    settings = ValidatorSettings()
     settings.assert_ready()
     snapshot = _snapshot(settings.price_snapshot)
 
@@ -76,7 +76,7 @@ def open_round(
     entropy: str = typer.Argument(..., help="Entropy fixed only after submissions close"),
     opened_at: str = typer.Option(..., "--opened-at", help="ISO-8601 timestamp"),
 ) -> None:
-    settings = ValidatorSettings()  # type: ignore[call-arg]
+    settings = ValidatorSettings()
     snapshot = _snapshot(settings.price_snapshot)
 
     plan = plan_round(
