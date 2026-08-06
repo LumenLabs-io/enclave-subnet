@@ -48,15 +48,15 @@ A delta is not a correction of the whitepaper's intent. Every one of these prese
 
 **Whitepaper.** Section 6 makes model choice the competitive surface and names step level routing as the specific opening the subnet exists to price.
 
-**Prior draft of `docs/miner-contract.md`.** States that the relay selects the model and that a submission may not express a routing preference.
-
 **Implementation.** The relay publishes the round's priced models in the `initialise` response. A submission may name any of them per call. Provider, quantisation, and routing hint fields are stripped rather than rejected, so the submission cannot reach past the catalogue to a specific endpoint or a cheaper quantisation of the same weights.
 
-**Why.** These two positions cannot both hold. If the relay picks the model, routing is not contestable and half the stated thesis is unpriced; the subnet would then be scoring context management alone. Letting the submission choose from a catalogue the validator prices preserves the security properties that mattered, which are that the container never holds a credential, never sees a price, and cannot pin a specific provider endpoint, while making the routing decision a scored choice.
+**Why.** An earlier draft of `docs/miner-contract.md` had the relay selecting the model, which cannot hold alongside the whitepaper. If the relay picks, routing is not contestable and half the stated thesis is unpriced; the subnet would be scoring context management alone. Letting the submission choose from a catalogue the validator prices preserves the properties that actually mattered, which are that the container never holds a credential, never sees a price, and cannot pin a specific provider endpoint, while making the routing decision a scored choice.
 
 The cost gradient makes this safe without a rule. Choosing an underpowered model to save money loses solutions, and a lost solution removes a unit from the numerator and adds `P` to the denominator at the same time. There is no exchange rate at which systematically underspending pays.
 
-**Status.** `docs/miner-contract.md` needs its `model.completions` section reconciled with this. Flagged rather than silently rewritten, because it is a mechanism decision rather than an editorial one.
+This is a departure in emphasis rather than in mechanism. `docs/threat-model.md` already closed cache arbitrage by pinning provider and quantisation and stripping routing hints, which is exactly what the relay does; only the model identifier was ever in dispute.
+
+**Status.** Reconciled. `docs/miner-contract.md` now documents catalogue selection.
 
 ## 7. Observations are billed as tokens
 

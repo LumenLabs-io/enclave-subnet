@@ -113,6 +113,7 @@ async def run_episode(
         counter=counter,
         sink=environment,
         default_model=config.default_model,
+        deadline_seconds=sandbox.limits.wall_clock_seconds,
     )
 
     server = RelayServer(session=session, socket_path=socket_dir / "relay.sock")

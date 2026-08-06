@@ -16,7 +16,7 @@ The image MUST NOT exceed the published size ceiling. An image carrying a large 
 
 The container receives a task and drives it to completion. It is not a memory layer plugged into a validator-supplied agent loop.
 
-This is a deliberate choice with a real cost. A middleware contract would let the subnet claim it elicits a portable drop-in layer, but it would require the validator to author, freeze, version and publish an entire agent policy — system prompt, tool loop, retry semantics, stopping rule — whose behaviour would then be a scoring parameter as load-bearing as any published constant, and which no document currently specifies. Shipping the whole agent removes that component, makes cost end-to-end by construction, and reduces the contract to one endpoint.
+This is a deliberate choice with a real cost. A middleware contract would let the subnet claim it elicits a portable drop-in layer, but it would require the validator to author, freeze, version and publish an entire agent policy, covering the system prompt, tool loop, retry semantics, and stopping rule, whose behaviour would then be a scoring parameter as load-bearing as any published constant, and which no document currently specifies. Shipping the whole agent removes that component, makes cost end-to-end by construction, and reduces the contract to one endpoint.
 
 The consequence is that a submission can win with a better prompt or a better control loop rather than better memory. That is acceptable: the metric is verified work per dollar, and a cheaper route to the same verified work is the thing being bought.
 
@@ -26,23 +26,28 @@ One container per instance. Fresh filesystem, fresh tmpfs, no volume surviving t
 
 This is stated as protocol rather than as an implementation detail because it makes cross-instance amortisation impossible rather than merely unrewarded. Work amortised across a batch does not reproduce for an operator running one task at a time, but would appear to the validator as a genuine cost reduction.
 
-```
+```text
 validator                                    container
     |                                             |
-    |-- start (seed, instance_id, budget) ------->|
+    |-- start container --------------------------|
     |                                             |
-    |<------------- POST /v1/model/completions ---|   metered, priced, logged
-    |-- response --------------------------------->|
+    |<------------- initialise -------------------|   seed, cap, deadline, models
+    |-- briefing --------------------------------->|
     |                                             |
-    |<------------- POST /v1/env/act -------------|   observations billed as tokens
+    |<------------- model.completions ------------|   metered, priced, logged
+    |-- content + usage -------------------------->|
+    |                                             |
+    |<------------- env.act ----------------------|   observations billed as tokens
     |-- observation ------------------------------>|
     |                                             |
-    |<------------- POST /v1/submit --------------|   terminal answer
+    |<------------- submit -----------------------|   terminal answer
     |                                             |
     |-- teardown -------------------------------->|
     |                                             |
   grade against private construction state
 ```
+
+The container opens the connection and calls every method. The validator starts it, tears it down, and grades it, and does not push work into it.
 
 ## Transport
 
@@ -56,39 +61,48 @@ The container never holds a provider credential and never sees a price.
 
 ### `initialise`
 
-```
--> { "seed": str, "instance_id": str, "environment": str,
-     "spend_cap": float, "deadline_seconds": int }
-<- { "ready": true }
+The container calls this first. Everything it needs for the instance comes back in the response; nothing is pushed to it.
+
+```text
+-> { }
+<- { "ready": true, "instance_id": str, "seed": str, "environment": str,
+     "spend_cap": str, "deadline_seconds": int, "models": [str, ...] }
 ```
 
-The seed is supplied rather than discovered. A submission MUST derive all of its randomness from it. Using wall-clock time, thread scheduling, process identifiers, or an unseeded generator is a protocol violation — not because nondeterminism is impolite, but because a submission whose behaviour varies between honest validators forces those validators to disagree, and consensus penalises them for it. One instance per submission per round is re-run and rejected on divergence.
+`models` is the round's priced catalogue. It is the complete set of identifiers accepted by `model.completions`.
+
+The seed is supplied rather than discovered. A submission MUST derive all of its randomness from it. Using wall-clock time, thread scheduling, process identifiers, or an unseeded generator is a protocol violation. Not because nondeterminism is impolite, but because a submission whose behaviour varies between honest validators forces those validators to disagree, and consensus penalises them for it. One instance per submission per round is re-run and rejected on divergence.
 
 ### `model.completions`
 
-```
--> { "messages": [...], "max_tokens": int, "stop": [...] }
-<- { "content": str, "usage": { "input_tokens": int, "output_tokens": int } }
+```text
+-> { "messages": [...], "model": str?, "max_tokens": int, "stop": [...] }
+<- { "content": str, "usage": { "input_tokens": int, "output_tokens": int },
+     "budget": { "remaining": str } }
 ```
 
-The relay selects the model. A submission MAY NOT name a model, a provider, a quantisation, or a routing preference; those fields are stripped rather than rejected, so a submission that sends them is not told whether they were honoured.
+A submission MAY name any model in the round's priced catalogue, returned as `models` by `initialise`. Naming one that is not in the catalogue is refused as `unpriced_model`; omitting `model` selects the round's default.
+
+Which model answers each step is a scored decision, not an implementation detail the validator hides. It is one of the two levers the subnet exists to price, the other being what the agent carries into each call, so routing has to be contestable or half the metric is unpriced. The cost gradient is what keeps this honest without a rule: an underpowered model saves money and loses solutions, and a lost solution removes a unit from the numerator while adding `P` to the denominator at the same time.
+
+A submission MAY NOT name a provider, a quantisation, or a routing preference. Those fields are stripped rather than rejected, so a submission that sends them is not told whether they were honoured. Provider and quantisation stay pinned for the round, which is what stops a submission's cost from depending on which submission ran before it.
 
 Usage is returned for the submission's own budgeting. It is not what is scored. Scoring uses the relay's own metering, from bytes on the wire, priced by the round's signed snapshot.
 
 ### `env.act`
 
-```
+```text
 -> { "action": str, "arguments": {...} }
-<- { "observation": str, "terminal": bool }
+<- { "observation": str, "terminal": bool, "budget": { "remaining": str } }
 ```
 
 Observations are delivered as model-channel content and billed at published token prices for their length.
 
-This is the mechanism the whole construction rests on. If observations were free, a scripted explorer would harvest every planted fact at zero cost and the environment would be fully observable with extra steps. Worse, the memory thesis would invert: retaining a fact across `k` calls costs `k` times while re-reading it costs once, so the score would reward forgetting. Billing observations is what makes retention win where it should — when `k * tokens_per_fact < tokens_per_observation`.
+This is the mechanism the whole construction rests on. If observations were free, a scripted explorer would harvest every planted fact at zero cost and the environment would be fully observable with extra steps. Worse, the memory thesis would invert: retaining a fact across `k` calls costs `k` times while re-reading it costs once, so the score would reward forgetting. Billing observations is what makes retention win where it should, which is when `k * tokens_per_fact < tokens_per_observation`.
 
 ### `submit`
 
-```
+```text
 -> { "answer": str }
 <- { "accepted": true }
 ```

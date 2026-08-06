@@ -38,7 +38,7 @@ The two roles also want incompatible values, which is the deeper reason they can
 
 ## Why the denominator has a floor
 
-`Y` is a ratio. Without a lower bound on charged cost, a single anomalously cheap solve — a lucky instance, a transiently mispriced model, or one unmetered channel — sends the score toward infinity, and under any proportional allocation that submission takes the entire pool.
+`Y` is a ratio. Without a lower bound on charged cost, a single anomalously cheap solve, whether a lucky instance, a transiently mispriced model, or one unmetered channel, sends the score toward infinity, and under any proportional allocation that submission takes the entire pool.
 
 `B_min` bounds `Y` above by `1 / B_min` unconditionally. It is a structural guarantee rather than an estimate, which matters because the failure mode it prevents is exactly the one that would follow from a metering bug nobody has noticed yet.
 
@@ -48,13 +48,13 @@ The two roles also want incompatible values, which is the deeper reason they can
 
 Ratio-of-sums is correct here because it is the quantity a customer experiences: total work completed divided by total bill. Mean-of-ratios corresponds to nothing anyone pays.
 
-Its weakness is influence — a handful of runaway trajectories can dominate the denominator. Charged costs are therefore **winsorised** at the family's 95th percentile before summing, which keeps the bill interpretation while bounding the contribution of any single instance.
+Its weakness is influence, because a handful of runaway trajectories can dominate the denominator. Charged costs are therefore **winsorised** at the family's 95th percentile before summing, which keeps the bill interpretation while bounding the contribution of any single instance.
 
 ## The reference agent
 
 `Y_ref` is published so a score reads as a multiple of a known baseline. It never enters the score.
 
-Keeping it out is not a stylistic choice. If capability were scored as a ratio against a reference, an environment that degrades the reference would hand every submission a free multiplier — and Enclave's own environments deliberately inject noise and withhold information, which degrades a naive reference by construction. A ratio-based capability gate would progressively stop binding as environments got harder, which is the opposite of the intent.
+Keeping it out is not a stylistic choice. If capability were scored as a ratio against a reference, an environment that degrades the reference would hand every submission a free multiplier, and Enclave's own environments deliberately inject noise and withhold information, which degrades a naive reference by construction. A ratio-based capability gate would progressively stop binding as environments got harder, which is the opposite of the intent.
 
 The baseline must be the best *shipped* agent configuration, not a naive full-context loop. Providers ship server-side compaction, tool-result clearing, and cached-read discounting; a multiple measured against no-optimisation proves nothing a provider changelog does not already prove.
 
@@ -62,7 +62,7 @@ The baseline must be the best *shipped* agent configuration, not a naive full-co
 
 An unpredictable fraction of instances is graded under a semantic transform whose expected result is recomputed through the same generator that produced the original. Invariance relations leave the answer unchanged; covariance relations change it deterministically, which prices memorisation as *wrong* rather than merely unmatched.
 
-**A failed audit voids the entire round, not the audited instance.** The audit detects a categorical property — an agent answering a transformed instance with the untransformed answer has memorised rather than reasoned, and that is a property of the submission. Voiding categorically makes a 2–5% audit rate a total deterrent, which decouples audit design from the failure penalty entirely. Per-instance zeroing would require auditing roughly half of every round to deter the same behaviour.
+**A failed audit voids the entire round, not the audited instance.** The audit detects a categorical property. An agent answering a transformed instance with the untransformed answer has memorised rather than reasoned, and that is a property of the submission. Voiding categorically makes a 2–5% audit rate a total deterrent, which decouples audit design from the failure penalty entirely. Per-instance zeroing would require auditing roughly half of every round to deter the same behaviour.
 
 Two implementation requirements follow, both in `docs/environments.md`:
 
@@ -73,7 +73,7 @@ Two implementation requirements follow, both in `docs/environments.md`:
 
 Every submission runs the identical instances as the reference agent, and records are stored per instance as `(instance_id, agent outcome, agent spend, reference outcome, reference spend)`.
 
-Task difficulty variance is then common to both arms and cancels — the common-random-numbers technique from simulation. The gain is large: for binary outcomes with realistic between-arm correlation, pairing cuts the instances required for a given confidence by a factor of roughly 2.5 to 5. Claims of an order of magnitude assume a between-arm correlation near 0.9, which is optimistic for agents that differ meaningfully.
+Task difficulty variance is then common to both arms and cancels, which is the common-random-numbers technique from simulation. The gain is large: for binary outcomes with realistic between-arm correlation, pairing cuts the instances required for a given confidence by a factor of roughly 2.5 to 5. Claims of an order of magnitude assume a between-arm correlation near 0.9, which is optimistic for agents that differ meaningfully.
 
 Pairing cannot be retrofitted. Adding it later means re-running every historical evaluation, which is why the record shape is fixed before anything else is built.
 
@@ -85,7 +85,7 @@ Scores become weights by **rank**, over a rolling ledger. Two alternatives were 
 
 *Proportional to score* fails because `Y` is a ratio whose spread is mix-dependent. Bounding it above with `B_min` prevents divergence but does not make the top of the range meaningful, and one outlying round still captures a disproportionate share.
 
-*King-of-the-hill with a decaying challenger margin* fails because the leading artifact is published. A copy scores within noise of its original by construction, so it permanently sits inside any margin — which hands the position to a copier on round-to-round variance, and forces a champion re-run on every near miss, a denial of service that costs the copier nothing.
+*King-of-the-hill with a decaying challenger margin* fails because the leading artifact is published. A copy scores within noise of its original by construction, so it permanently sits inside any margin. That hands the position to a copier on round-to-round variance, and forces a champion re-run on every near miss, a denial of service that costs the copier nothing.
 
 Rank allocation dissolves both. There is no position to capture, a copy lands beside its original rather than displacing it, and the marginal entrant's expected value stays positive far enough down the field that entering is rational.
 

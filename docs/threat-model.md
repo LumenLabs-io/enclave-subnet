@@ -48,7 +48,7 @@ A submission reports its own usage favourably.
 
 Where failure forfeits a fixed budget regardless of spend, the marginal price of a dollar on a losing trajectory is zero. Retry-until-success then dominates, slow failure dominates fast failure, and a doomed instance becomes free reconnaissance transferable to the rest of the round.
 
-**Closed by** `gamma_i = max(x_i, B_min) + (1 - s_i) * P` — spend is always charged, and the penalty is additive rather than substitutive. **Module:** `scoring`.
+**Closed by** `gamma_i = max(x_i, B_min) + (1 - s_i) * P`, where spend is always charged and the penalty is additive rather than substitutive. **Module:** `scoring`.
 
 ### Divergent score from an unmetered channel
 
@@ -106,7 +106,7 @@ An agent that detects it is being watched reasons properly only there.
 
 The leading artifact is published. A copy scores within noise of its original by construction, so under a challenger margin it captures the position on variance and forces a re-run on every near miss at no cost to itself.
 
-**Closed by** rank allocation rather than king-of-the-hill — there is no position to capture — plus multi-axis originality detection with first-seen-wins precedence: exact bytes, normalised source, structural fingerprint, and behavioural fingerprint on a fixed hidden probe battery. A later near-identical submission scores zero regardless of measured performance. **Modules:** `scoring`, `validator`.
+**Closed by** rank allocation rather than king-of-the-hill, so there is no position to capture, plus multi-axis originality detection with first-seen-wins precedence: exact bytes, normalised source, structural fingerprint, and behavioural fingerprint on a fixed hidden probe battery. A later near-identical submission scores zero regardless of measured performance. **Modules:** `scoring`, `validator`.
 
 ### Sybil variance farming
 
@@ -142,7 +142,7 @@ With provider-side prefix caching, a submission evaluated after another on the s
 
 Any network path out of the container defeats metering, isolation, and seed secrecy simultaneously.
 
-**Closed by** a network namespace containing only loopback — no interfaces, no resolver configuration, no routes — with the sole channel out being a Unix domain socket to the relay. Egress is structurally impossible rather than policy-blocked. **Module:** `sandbox`.
+**Closed by** a network namespace containing only loopback, meaning no interfaces, no resolver configuration, and no routes, with the sole channel out being a Unix domain socket to the relay. Egress is structurally impossible rather than policy-blocked. **Module:** `sandbox`.
 
 ## Residual risks
 

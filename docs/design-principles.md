@@ -51,13 +51,13 @@ Where a value must cross from the container, it is treated as an assertion to be
 
 ## Fail closed
 
-Every ambiguous outcome resolves against the submission. A crash, a timeout, an exhausted cap, a protocol violation, and a wrong answer all score identically as a failure that forfeits the penalty. They are recorded distinctly so operators can diagnose a field, but scoring must never distinguish them — any distinction is an incentive to fail in whichever way looks cheaper.
+Every ambiguous outcome resolves against the submission. A crash, a timeout, an exhausted cap, a protocol violation, and a wrong answer all score identically as a failure that forfeits the penalty. They are recorded distinctly so operators can diagnose a field, but scoring must never distinguish them, because any distinction is an incentive to fail in whichever way looks cheaper.
 
 Missing evidence is failure. A record that cannot be verified is not scored optimistically.
 
 ## Configuration is explicit, typed, and inert
 
-Runtime configuration is a `pydantic-settings` model with no defaults that would silently change scoring. Anything affecting a score — the spend cap, the failure penalty, the denominator floor, the price snapshot, the audit rate — is part of the signed round header, not an operator preference. An operator can change what their validator spends and how it logs; they cannot change what a score means without that being visible on chain.
+Runtime configuration is a `pydantic-settings` model with no defaults that would silently change scoring. Anything affecting a score, meaning the spend cap, the failure penalty, the denominator floor, the price snapshot, and the audit rate, is part of the signed round header rather than an operator preference. An operator can change what their validator spends and how it logs; they cannot change what a score means without that being visible on chain.
 
 ## Errors are typed and narrow
 

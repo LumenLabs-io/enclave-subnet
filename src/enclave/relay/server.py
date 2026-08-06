@@ -45,6 +45,7 @@ class RelaySession:
     counter: TokenCounter
     sink: ActionSink
     default_model: str
+    deadline_seconds: int = 0
     state: str = SessionState.CREATED
     answer: str | None = None
     terminal_reached: bool = False
@@ -97,6 +98,7 @@ class RelaySession:
                 "seed": self.seed,
                 "environment": self.environment_name,
                 "spend_cap": str(self.meter.spend_cap),
+                "deadline_seconds": self.deadline_seconds,
                 "models": list(self.meter.snapshot.selectable),
             },
         )
