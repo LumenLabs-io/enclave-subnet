@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Final
+
+PROTOCOL_VERSION: Final = 1
+ROUND_SCHEMA_VERSION: Final = 1
+RELAY_PROTOCOL_VERSION: Final = 1
+PRICE_SNAPSHOT_SCHEMA_VERSION: Final = 1
+
+DOMAIN_SEPARATOR: Final = "enclave"
+DIGEST_DOMAIN_ROUND: Final = f"{DOMAIN_SEPARATOR}.round.v1"
+DIGEST_DOMAIN_INSTANCE: Final = f"{DOMAIN_SEPARATOR}.instance.v1"
+DIGEST_DOMAIN_TRANSCRIPT: Final = f"{DOMAIN_SEPARATOR}.transcript.v1"
+DIGEST_DOMAIN_PRICE_SNAPSHOT: Final = f"{DOMAIN_SEPARATOR}.price-snapshot.v1"
+DIGEST_DOMAIN_AUDIT_SELECTION: Final = f"{DOMAIN_SEPARATOR}.audit.selection-key.v1"
+DIGEST_DOMAIN_AUDIT_TRANSFORM: Final = f"{DOMAIN_SEPARATOR}.audit.transform-key.v1"
+DIGEST_DOMAIN_AUDIT_SECRET: Final = f"{DOMAIN_SEPARATOR}.audit.secret-commitment.v1"
+
+SCORING_PRECISION: Final = 96
+MONEY_QUANTUM: Final = Decimal("0.00000001")
+YIELD_QUANTUM: Final = Decimal("0.000000000001")
+WEIGHT_PPM_TOTAL: Final = 1_000_000
+
+DENOMINATOR_FLOOR: Final = Decimal("0.005")
+FAILURE_PENALTY: Final = Decimal("0.25")
+SPEND_CAP: Final = Decimal("2.00")
+WINSORIZE_QUANTILE: Final = Decimal("0.95")
+
+PAID_RANKS: Final = 12
+TOP_SHARE: Final = Decimal("0.25")
+
+AUDIT_RATE: Final = Decimal("0.05")
+AUDIT_SECRET_MIN_BYTES: Final = 32
+
+MINER_EMISSION_SHARE: Final = Decimal("0.41")
+
+MIN_TIE_MARGIN: Final = Decimal("0.005")
+NOISE_MARGIN_MULTIPLIER: Final = Decimal("2.0")
+MAX_DECIDABLE_NOISE: Final = Decimal("0.10")
+
+MAX_ONCHAIN_PAYLOAD_BYTES: Final = 1024
+SUBMISSION_INTERVAL_SECONDS: Final = 86_400
