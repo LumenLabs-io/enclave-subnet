@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
@@ -41,7 +41,7 @@ class Limits:
 class SandboxSpec:
     image: str
     socket_dir: Path
-    limits: Limits = Limits()
+    limits: Limits = field(default_factory=Limits)
     user: str = "65534:65534"
 
     def __post_init__(self) -> None:
