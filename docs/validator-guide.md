@@ -87,6 +87,14 @@ Two properties of the weight loop are worth stating because both are easy to get
 
 Emissions pause is honoured from the directive, so the operator can stop the field without shipping code.
 
+### Reserved emissions
+
+The directive carries `reserved_hotkey` and `reserved_share`. Where a share is set, that fraction of every weight vector is withheld from the field and sent to the reserved hotkey, and the remainder is diluted across whatever the round earned. A share of `1` sends the whole vector there and pays nobody else, which is how the subnet runs before miners are onboarded. Both default to empty and zero, so a directive that says nothing about them pays the field in full.
+
+The reserved hotkey must be registered on the subnet. If it is not, the weight loop refuses to publish rather than letting the withheld share fall through to the miners it was meant to be withheld from, and says so in the log every interval until the registration lands.
+
+The address itself is never compiled in. It lives in the directive the operator signs, so changing it or winding the share down to zero is a new revision rather than a release.
+
 ## Opening a round by hand
 
 ```sh

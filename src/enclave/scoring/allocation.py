@@ -16,6 +16,7 @@ __all__ = [
     "Allocation",
     "AllocationParams",
     "allocate",
+    "apply_reserved_share",
     "geometric_schedule",
     "largest_remainder_ppm",
     "solve_decay",
@@ -162,4 +163,37 @@ def allocate(
         ppm=largest_remainder_ppm(shares),
         schedule=schedule,
         ranked=ranked,
+    )
+
+
+def apply_reserved_share(
+    allocation: Allocation,
+    hotkey: str,
+    share: Decimal,
+) -> Allocation:
+    if not hotkey or share <= 0:
+        return allocation
+    if share > 1:
+        raise ScoringError(f"reserved_share must lie in (0, 1], got {share}")
+
+    if share >= 1 or not allocation.ppm:
+        return Allocation(
+            ppm={hotkey: WEIGHT_PPM_TOTAL},
+            schedule=[],
+            ranked=allocation.ranked,
+        )
+
+    with localcontext() as ctx:
+        ctx.prec = SCORING_PRECISION
+        keep = Decimal(1) - share
+        merged: dict[str, Decimal] = {}
+        for submission_id, ppm in allocation.ppm.items():
+            earned = Decimal(ppm) / Decimal(WEIGHT_PPM_TOTAL) * keep
+            merged[submission_id] = merged.get(submission_id, Decimal(0)) + earned
+        merged[hotkey] = merged.get(hotkey, Decimal(0)) + share
+
+    return Allocation(
+        ppm=largest_remainder_ppm(sorted(merged.items())),
+        schedule=allocation.schedule,
+        ranked=allocation.ranked,
     )

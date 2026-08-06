@@ -19,6 +19,7 @@ from enclave.relay.pricing import PriceSnapshot
 from enclave.relay.providers import Provider, TokenCounter
 from enclave.sandbox.runner import Runner
 from enclave.sandbox.spec import Limits
+from enclave.scoring.allocation import Allocation, apply_reserved_share
 from enclave.validator.discovery import admitted, discover, rejected, summary
 from enclave.validator.round import (
     allocate_weights,
@@ -183,6 +184,16 @@ class Validator:
 
             await self._sleep(self.config.poll_interval_seconds)
 
+    def _settled_allocation(self) -> tuple[str | None, Allocation]:
+        empty = Allocation(ppm={}, schedule=[], ranked=[])
+        settled = self._settled_round()
+        if settled is None:
+            return None, empty
+        scores = score_submissions(self.ledger, settled)
+        if not scores:
+            return settled, empty
+        return settled, allocate_weights(scores)
+
     async def weight_loop(self) -> None:
         while not self._stop.is_set():
             await self._sleep(self.config.weight_interval_seconds)
@@ -196,20 +207,35 @@ class Validator:
                     log.info("a round is in flight; holding the published weights")
                     continue
 
-                settled = self._settled_round()
-                if settled is None:
-                    continue
-
-                scores = score_submissions(self.ledger, settled)
-                if not scores:
-                    continue
-                allocation = allocate_weights(scores)
+                settled, earned = self._settled_allocation()
+                allocation = apply_reserved_share(
+                    earned, directive.reserved_hotkey, directive.reserved_share
+                )
                 if not allocation.ppm:
-                    log.info("no submission cleared the threshold in %s", settled)
+                    log.info("nothing has been earned and nothing is reserved; not publishing")
                     continue
 
-                uids, weights = publish(self.chain, allocation)
-                log.info("published %d weights from round %s", len(uids), settled)
+                view = self.chain.metagraph()
+                if directive.reserved_share > 0 and directive.reserved_hotkey not in set(
+                    view.hotkeys()
+                ):
+                    log.error(
+                        "reserved hotkey %s is not registered on netuid %d, so publishing now "
+                        "would hand its share to the miners it is meant to withhold from; "
+                        "holding weights until it is registered",
+                        directive.reserved_hotkey,
+                        self.config.netuid,
+                    )
+                    continue
+
+                uids, _ = publish(self.chain, allocation, view)
+                log.info(
+                    "published %d weights from round %s, reserving %s to %s",
+                    len(uids),
+                    settled or "no settled round",
+                    directive.reserved_share,
+                    directive.reserved_hotkey[:12] or "nobody",
+                )
             except EnclaveError:
                 log.exception("weight publication failed")
 
