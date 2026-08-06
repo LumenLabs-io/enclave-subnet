@@ -25,6 +25,9 @@ class ValidatorSettings(BaseSettings):
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")
 
+    control_plane_url: str = Field(default="")
+    owner_public_key: str = Field(default="")
+
     ledger_root: Path = Field(default=Path("./state/ledger"))
     socket_root: Path = Field(default=Path("./state/sockets"))
     price_snapshot: Path = Field(default=Path("./state/prices.json"))
@@ -61,6 +64,12 @@ class ValidatorSettings(BaseSettings):
 
     def assert_ready(self) -> None:
         problems: list[str] = []
+        if not self.control_plane_url:
+            problems.append("ENCLAVE_CONTROL_PLANE_URL must point at the admission service")
+        if not self.owner_public_key:
+            problems.append(
+                "ENCLAVE_OWNER_PUBLIC_KEY must be set; without it no directive can be trusted"
+            )
         if not self.default_model:
             problems.append("ENCLAVE_DEFAULT_MODEL must name a model priced by the snapshot")
         if not self.dry_run and not self.provider_api_key:

@@ -79,7 +79,7 @@ disallow_any_generics = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["bittensor.*", "docker.*"]
+module = ["bittensor.*", "docker.*", "substrateinterface.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
