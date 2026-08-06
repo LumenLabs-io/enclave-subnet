@@ -9,7 +9,7 @@ You build your own container. This repository is the subnet implementation, not 
 What you need from it is the SDK, which speaks the relay protocol so you do not have to implement newline delimited JSON-RPC yourself:
 
 ```sh
-pip install enclave-subnet
+pip install git+https://github.com/LumenLabs-io/enclave-subnet
 ```
 
 Your agent is your own code, your own repository, and your own image. The only contract is the four methods in [miner-contract.md](miner-contract.md).
@@ -61,7 +61,7 @@ The container has no network egress at run time, so every dependency has to be b
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir enclave-subnet
+RUN pip install --no-cache-dir git+https://github.com/LumenLabs-io/enclave-subnet
 COPY agent.py /app/agent.py
 USER 65534:65534
 CMD ["python", "/app/agent.py"]

@@ -5,7 +5,7 @@
 **Enclave is a decentralised efficiency layer for autonomous agents.** It takes the two decisions that dominate what an agent consumes, what each model call carries and which model answers it, and produces a **Verified Agent Runtime (VAR)**: a portable, independently recomputable policy that completes the same verified work on a fraction of the tokens, backed by published evidence that the work was actually completed and the consumption actually measured.
 
 ```sh
-pip install enclave-subnet
+pip install git+https://github.com/LumenLabs-io/enclave-subnet
 ```
 
 ---
@@ -138,7 +138,7 @@ Derivation, parameter choices, and the mapping from score to weight vector are i
 You submit a candidate Runtime as a container. It receives a task and a budget, reads the world through actions, calls models through the relay, and submits an answer. It has no network egress, never holds a provider credential, and never sees the schedule.
 
 ```sh
-pip install enclave-subnet
+pip install git+https://github.com/LumenLabs-io/enclave-subnet
 
 enclave-miner contract                       # the protocol your container speaks
 enclave-miner isolation <image>              # the sandbox it will run in
@@ -158,7 +158,7 @@ enclave-miner commit-image <hotkey> <image>  # commit before the deadline, revea
 You run the round loop: fix a seed after submissions close, generate instances, run each submission in an isolated container against a relay you operate, grade against private construction state, fold records into scores, publish weights.
 
 ```sh
-pip install "enclave-subnet[validator]"
+pip install "enclave-ai[validator] @ git+https://github.com/LumenLabs-io/enclave-subnet"
 
 cp .env.example .env                  # wallet, netuid, provider credential, model schedule
 enclave-validator preflight           # refuses to pass on a misconfiguration

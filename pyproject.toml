@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "enclave-subnet"
+name = "enclave-ai"
 version = "0.1.0"
 description = "A Bittensor subnet scoring agents on verified work per dollar"
 readme = "README.md"
