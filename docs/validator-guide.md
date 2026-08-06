@@ -71,7 +71,23 @@ enclave-validator preflight
 
 Preflight refuses to pass if the default model is not priced by the snapshot, if a configured family is unknown, or if the provider credential is missing outside dry run.
 
-## The round
+## Running it
+
+```sh
+enclave-validator run
+```
+
+That is the whole operation. The daemon runs two independent loops.
+
+The **scoring loop** fetches the signed directive, verifies the owner signature itself, and refuses to continue if this validator is not admitted or is below the network's `min_mechanism_version`. When a round is due it discovers submissions from on chain commitments, checks each reveal against its commitment and its payment against the chain, opens a round, and evaluates every admitted submission while holding the round lock.
+
+The **weight loop** runs on its own schedule. This separation is deliberate: a sweep across a full field can take hours, and a weight cadence tied to it would starve chain updates whenever the queue is busy.
+
+Two properties of the weight loop are worth stating because both are easy to get wrong. It publishes from the most recent **settled** round rather than the round being evaluated, since building a vector from the in flight set zeroes a submission that was scored last round and is not being re run. And it **holds** rather than publishes while a round is in flight, so a half evaluated ledger never reaches the chain.
+
+Emissions pause is honoured from the directive, so the operator can stop the field without shipping code.
+
+## Opening a round by hand
 
 ```sh
 enclave-validator open-round round-042 "$ENTROPY" --opened-at 2026-01-01T00:00:00Z

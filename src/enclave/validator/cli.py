@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -11,11 +12,22 @@ from enclave.environments.prf import AuditKey
 from enclave.environments.registry import families as known_families
 from enclave.ledger.store import Ledger
 from enclave.relay.pricing import PriceSnapshot
+from enclave.relay.providers import Provider
 from enclave.validator.config import ValidatorSettings
 from enclave.validator.round import plan_round
 from enclave.validator.state import read_lock, round_in_flight
 
 app = typer.Typer(add_completion=False, help="Operate an Enclave validator.")
+
+
+def _provider(settings: ValidatorSettings) -> Provider:
+    from enclave.relay.providers import DeterministicProvider
+
+    if not settings.provider_base_url:
+        raise typer.BadParameter(
+            "ENCLAVE_PROVIDER_BASE_URL must be set, or pass --dry-run to use a stub provider"
+        )
+    return DeterministicProvider(seed=settings.provider_base_url)
 
 
 def _snapshot(path: Path) -> PriceSnapshot:
@@ -68,6 +80,74 @@ def status(
 
     if in_flight:
         raise typer.Exit(code=75)
+
+
+@app.command()
+def run(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Use a deterministic provider"),
+) -> None:
+    import asyncio
+    import logging
+    import signal
+
+    from enclave.chain.client import BittensorChain
+    from enclave.control.client import ControlPlane
+    from enclave.ledger.store import Ledger
+    from enclave.relay.providers import DeterministicProvider, HeuristicTokenCounter
+    from enclave.sandbox.runner import DockerRunner
+    from enclave.sandbox.spec import Limits
+    from enclave.validator.daemon import DaemonConfig, Validator
+
+    settings = ValidatorSettings()
+    settings.assert_ready()
+    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(message)s")
+
+    import bittensor
+
+    wallet = bittensor.wallet(name=settings.wallet_name, hotkey=settings.wallet_hotkey)
+    subtensor = bittensor.subtensor(network=settings.chain_endpoint)
+
+    control = ControlPlane(
+        base_url=settings.control_plane_url,
+        hotkey=wallet.hotkey.ss58_address,
+        sign=lambda message: wallet.hotkey.sign(message),
+        owner_public_key=settings.owner_public_key,
+        netuid=settings.netuid,
+    )
+
+    validator = Validator(
+        config=DaemonConfig(
+            netuid=settings.netuid,
+            default_model=settings.default_model,
+            socket_root=settings.socket_root,
+            state_root=settings.ledger_root.parent,
+            limits=Limits(
+                cpus=settings.container_cpus,
+                memory_bytes=settings.memory_bytes,
+                wall_clock_seconds=settings.container_wall_clock_seconds,
+            ),
+        ),
+        control=control,
+        chain=BittensorChain(netuid=settings.netuid, wallet=wallet, subtensor=subtensor),
+        ledger=Ledger(settings.ledger_root),
+        runner=DockerRunner(),
+        provider=DeterministicProvider(seed="dry-run") if dry_run else _provider(settings),
+        counter=HeuristicTokenCounter(),
+        snapshot=_snapshot(settings.price_snapshot),
+    )
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    for name in ("SIGINT", "SIGTERM"):
+        with contextlib.suppress(AttributeError, NotImplementedError):
+            loop.add_signal_handler(getattr(signal, name), validator.stop)
+    try:
+        loop.run_until_complete(validator.run())
+    except KeyboardInterrupt:
+        validator.stop()
+    finally:
+        control.close()
+        loop.close()
 
 
 @app.command("open-round")
