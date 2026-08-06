@@ -118,6 +118,10 @@ The answer MUST be carried by a token stream that crossed the relay. An answer t
 | CPU and memory | cgroup limits; CPU time priced at a published instance rate |
 | Accelerator devices | None mapped into the container namespace |
 | Filesystem | Read-only rootfs plus a tmpfs scratch, both discarded at teardown |
+| Frame size | 1 MiB per request; the socket reader is bound to the same limit |
+| Frame shape | Nesting at most 24 deep, at most 50,000 items, object keys at most 256 characters |
+
+A frame that breaches any of the last two is a protocol violation and is recorded as one. It is not an infrastructure fault and does not earn a re-run, because a submission that could crash the relay on demand could convert any losing instance into a free exclusion. Duplicate object keys and non-finite constants are rejected for the same reason: they let a submission make two components disagree about what it asked for.
 
 CPU is priced rather than merely capped because "reasoning" and "reasoning through the meter" are not the same thing. A container performing genuine inference on bundled weights would otherwise do real work at zero scored cost.
 

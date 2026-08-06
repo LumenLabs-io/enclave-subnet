@@ -11,6 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 from enclave.errors import IsolationError, ProtocolError, RelayError
 from enclave.relay.meter import Meter, SpendCapExceeded
 from enclave.relay.protocol import (
+    MAX_FRAME_BYTES,
     ErrorCode,
     Method,
     Request,
@@ -257,7 +258,7 @@ class RelayServer:
         starter = getattr(asyncio, "start_unix_server", None)
         if starter is None:
             raise IsolationError("unix domain sockets are unavailable on this platform")
-        self._server = await starter(self._handle, path=str(self._path))
+        self._server = await starter(self._handle, path=str(self._path), limit=MAX_FRAME_BYTES)
         os.chmod(self._path, 0o600)
 
     async def stop(self) -> None:
@@ -269,33 +270,44 @@ class RelayServer:
         with contextlib.suppress(FileNotFoundError):
             self._path.unlink()
 
+    async def _refuse(
+        self, writer: asyncio.StreamWriter, code: str, detail: str
+    ) -> None:
+        with contextlib.suppress(Exception):
+            writer.write(encode(Response(id=0, error_code=code, error_message=detail)))
+            await writer.drain()
+
     async def _handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         try:
             while True:
-                line = await reader.readline()
+                try:
+                    line = await reader.readline()
+                except (ValueError, asyncio.LimitOverrunError) as exc:
+                    detail = f"frame exceeds the {MAX_FRAME_BYTES} byte protocol limit"
+                    self._session.violations.append(f"{detail}: {exc}")
+                    await self._refuse(writer, ErrorCode.MALFORMED, detail)
+                    return
+
                 if not line:
                     return
+
                 try:
                     request = decode(line)
                 except ProtocolError as exc:
                     self._session.violations.append(str(exc))
-                    writer.write(
-                        encode(
-                            Response(
-                                id=0,
-                                error_code=ErrorCode.MALFORMED,
-                                error_message=str(exc),
-                            )
-                        )
-                    )
-                    await writer.drain()
+                    await self._refuse(writer, ErrorCode.MALFORMED, str(exc))
                     continue
 
                 response = await self._session.dispatch(request)
                 writer.write(encode(response))
                 await writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            self._session.violations.append("submission closed the socket mid-frame")
+        except Exception as exc:
+            self._session.violations.append(f"unhandled relay fault: {type(exc).__name__}: {exc}")
+            raise
         finally:
             with contextlib.suppress(Exception):
                 writer.close()

@@ -50,6 +50,20 @@ Where failure forfeits a fixed budget regardless of spend, the marginal price of
 
 **Closed by** `gamma_i = max(x_i, B_min) + (1 - s_i) * P`, where spend is always charged and the penalty is additive rather than substitutive. **Module:** `scoring`.
 
+### Buying a no-decision with a malformed frame
+
+Infrastructure faults resolve to `NO_DECISION` and are excluded from scoring rather than charged, which is correct because a validator that bills its own outages to miners will lose its miners. That creates an incentive the design must close: a submission which can tell it is about to fail an instance wants to convert a certain `FAIL` into a free exclusion.
+
+The route is any input that produces an unhandled exception in the relay rather than a recorded violation, because an unhandled fault is indistinguishable from an outage. An oversized frame is the cheapest such input. A stream reader raises on a frame larger than its buffer, and that exception is raised before any protocol-level size check can run, so a declared frame limit larger than the reader's limit is unenforceable and the excess arrives as a crash.
+
+**Closed by** binding the reader's limit to the declared protocol limit so oversized frames surface as a protocol error rather than a reader exception, and by the relay recording a violation for every abnormal path including connection reset and unexpected faults. A submission that trips any of them is charged, not excused. **Module:** `relay`.
+
+### Disagreeing with the meter through a duplicate key
+
+A JSON object carrying the same key twice resolves to whichever value the parser keeps. Where two components parse the same frame independently, or where one reads a field the other does not, a submission can make the relay and the meter disagree about what was requested and therefore about what should be billed.
+
+**Closed by** rejecting duplicate keys at decode, along with non-finite constants, nesting past a fixed depth, more than a fixed item count, and object keys longer than 256 characters. The frame is bounded in every dimension before any component reads a field from it. **Module:** `relay`.
+
 ### Divergent score from an unmetered channel
 
 Any channel not priced sends `Y` toward infinity and hands one submission the entire pool.

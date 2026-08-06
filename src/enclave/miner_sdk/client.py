@@ -22,6 +22,7 @@ class Briefing:
     seed: str
     environment: str
     spend_cap: str
+    deadline_seconds: int
     models: tuple[str, ...]
 
 
@@ -117,6 +118,7 @@ class EnclaveClient:
             seed=str(result.get("seed", "")),
             environment=str(result.get("environment", "")),
             spend_cap=str(result.get("spend_cap", "")),
+            deadline_seconds=int(result.get("deadline_seconds", 0)),
             models=tuple(str(m) for m in result.get("models", ())),
         )
 

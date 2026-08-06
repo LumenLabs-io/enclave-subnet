@@ -13,6 +13,9 @@ env/
 
 .mypy_cache/
 .ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
 
 .idea/
 .vscode/
@@ -36,3 +39,5 @@ wallets/
 
 price_snapshots/
 seeds/
+
+tests/

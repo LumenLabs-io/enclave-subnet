@@ -6,13 +6,40 @@ Running a validator. What it needs, what it does each round, and what to check w
 
 - Linux. The relay is a unix domain socket; there is no Windows path and there will not be one.
 - Docker, with the validator's user able to reach the daemon.
+- Python 3.11 or newer.
+- A registered hotkey on the subnet.
 - A provider credential with enough headroom for `submissions * instances * spend_cap` in the worst case.
 - An accurate clock. Nothing in scoring reads the wall clock, but chain calls and provider calls both care.
 - Outbound access to the chain endpoint and the provider. The sandbox itself needs none, by construction.
 
+## Install
+
+Clone the repository. Unlike a miner, who only needs the SDK and builds their own image, a validator runs this codebase as a service and needs the configuration template and the environment generators that ship with it.
+
+```sh
+git clone https://github.com/<org>/enclave-subnet
+cd enclave-subnet
+
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[validator]"
+```
+
+Installing in editable mode means `git pull` is the whole upgrade path. Every validator must run the same mechanism code, because two validators folding the same evidence into different numbers is a consensus divergence that costs both of them income.
+
+Verify the install before configuring anything:
+
+```sh
+enclave-validator --help
+enclave-score --help
+```
+
 ## Configuration
 
 Every setting is `ENCLAVE_` prefixed and read from the environment or `.env`. Extra keys are rejected rather than ignored, so a typo fails at startup instead of silently taking a default.
+
+```sh
+cp .env.example .env
+```
 
 ```ini
 ENCLAVE_NETUID=
