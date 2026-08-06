@@ -7,7 +7,7 @@ Running a validator. What it needs, what it does each round, and what to check w
 - Linux. The relay is a unix domain socket; there is no Windows path and there will not be one.
 - Docker, with the validator's user able to reach the daemon.
 - Python 3.11 or newer.
-- A registered hotkey on the subnet.
+- A hotkey registered on netuid 92.
 - A provider credential with enough headroom for `submissions * instances * spend_cap` in the worst case.
 - An accurate clock. Nothing in scoring reads the wall clock, but chain calls and provider calls both care.
 - Outbound access to the chain endpoint and the provider. The sandbox itself needs none, by construction.
@@ -17,7 +17,7 @@ Running a validator. What it needs, what it does each round, and what to check w
 Clone the repository. Unlike a miner, who only needs the SDK and builds their own image, a validator runs this codebase as a service and needs the configuration template and the environment generators that ship with it.
 
 ```sh
-git clone https://github.com/<org>/enclave-subnet
+git clone https://github.com/LumenLabs-io/enclave-subnet
 cd enclave-subnet
 
 python -m venv .venv && . .venv/bin/activate
@@ -42,7 +42,7 @@ cp .env.example .env
 ```
 
 ```ini
-ENCLAVE_NETUID=
+ENCLAVE_NETUID=92
 ENCLAVE_WALLET_NAME=validator
 ENCLAVE_WALLET_HOTKEY=default
 ENCLAVE_CHAIN_ENDPOINT=wss://entrypoint-finney.opentensor.ai:443

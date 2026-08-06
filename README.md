@@ -1,5 +1,7 @@
 # Enclave
 
+*Bittensor subnet 92*
+
 **Enclave is a decentralised efficiency layer for autonomous agents.** It takes the two decisions that dominate what an agent consumes, what each model call carries and which model answers it, and produces a **Verified Agent Runtime (VAR)**: a portable, independently recomputable policy that completes the same verified work on a fraction of the tokens, backed by published evidence that the work was actually completed and the consumption actually measured.
 
 ```sh
