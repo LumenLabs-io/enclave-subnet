@@ -25,19 +25,19 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
-data/
-ledger/
-transcripts/
-artifacts/
+/data/
+/ledger/
+/transcripts/
+/artifacts/
 
 .env
 .env.*
 !.env.example
 *.pem
 *.key
-wallets/
+/wallets/
 
-price_snapshots/
-seeds/
+/price_snapshots/
+/seeds/
 
 tests/
