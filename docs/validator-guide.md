@@ -7,10 +7,10 @@ Running a validator. What it needs, what it does each round, and what to check w
 - Linux. The relay is a unix domain socket; there is no Windows path and there will not be one.
 - Docker, with the validator's user able to reach the daemon.
 - Python 3.11 or newer.
-- A hotkey registered on netuid 92.
+- A hotkey registered on netuid 92, **and admitted by the subnet owner**. Admission is out of band: the control plane answers `403` to a hotkey that is not on the list, and the validator will not score without a directive.
 - A provider credential with enough headroom for `submissions * instances * spend_cap` in the worst case.
 - An accurate clock. Nothing in scoring reads the wall clock, but chain calls and provider calls both care.
-- Outbound access to the chain endpoint and the provider. The sandbox itself needs none, by construction.
+- Outbound access to the chain endpoint, the control plane, and the provider. The sandbox itself needs none, by construction.
 
 ## Install
 
@@ -35,41 +35,44 @@ enclave-score --help
 
 ## Configuration
 
-Every setting is `ENCLAVE_` prefixed and read from the environment or `.env`. Extra keys are rejected rather than ignored, so a typo fails at startup instead of silently taking a default.
+Every setting is `ENCLAVE_` prefixed and read from the environment or `.env`.
 
 ```sh
 cp .env.example .env
 ```
 
 ```ini
-ENCLAVE_NETUID=92
 ENCLAVE_WALLET_NAME=validator
 ENCLAVE_WALLET_HOTKEY=default
-ENCLAVE_CHAIN_ENDPOINT=wss://entrypoint-finney.opentensor.ai:443
-
-ENCLAVE_LEDGER_ROOT=./state/ledger
-ENCLAVE_SOCKET_ROOT=./state/sockets
-ENCLAVE_PRICE_SNAPSHOT=./state/prices.json
-
-ENCLAVE_FAMILIES=["archive"]
-ENCLAVE_INSTANCES_PER_FAMILY=24
-ENCLAVE_DEFAULT_MODEL=
 
 ENCLAVE_PROVIDER_BASE_URL=
 ENCLAVE_PROVIDER_API_KEY=
+
+ENCLAVE_LEDGER_ROOT=./state/ledger
+ENCLAVE_SOCKET_ROOT=./state/sockets
 
 ENCLAVE_CONTAINER_CPUS=2.0
 ENCLAVE_CONTAINER_MEMORY_GIB=4
 ENCLAVE_CONTAINER_WALL_CLOCK_SECONDS=900
 ```
 
-What an operator may change and what they may not is a hard line. Spend, logging, concurrency, and hardware are operator settings. The spend cap, the failure penalty, the denominator floor, the audit rate, and the price snapshot are part of the signed round header. An operator cannot change what a score means without it being visible on chain.
+That is the whole file. What is *not* in it matters more than what is.
+
+**Network identity is compiled in, not configured.** The control plane is `https://api.nclv.io` and the key whose signature every directive must carry is `5F4pTG5AzJwVoRUw97qPCVYAXUPthKTRoKLtKCsVbpccVKkg`. Neither is a setting. A validator that could point itself at another control plane, or trust another signing key, could sign itself a directive granting whatever prices and scoring parameters it liked and still call itself an Enclave validator. Setting `ENCLAVE_CONTROL_PLANE_URL` or `ENCLAVE_OWNER_PUBLIC_KEY` to anything other than the compiled value is refused at startup with a message saying so; setting it to the correct value is accepted and ignored, so an older `.env` still parses. Changing them for real means shipping a fork, which is visible and which diverges from consensus rather than quietly redefining it.
+
+**There is no price snapshot to author.** The model schedule, the default model, the enabled families, the instance count, the spend cap, the failure penalty, the denominator floor, and the audit rate all arrive in the owner signed directive, and the round header records the digest of the snapshot that priced the round. A validator cannot price a round differently from its peers by misconfiguring itself. That is the point: prices are the denominator of every yield, so two validators pricing differently is a consensus divergence that costs both of them income, and recording a digest only makes that detectable afterwards rather than impossible.
+
+Spend, logging, hardware, and paths remain operator settings, because none of them change a number the network agrees on.
+
+Extra keys are rejected when they appear in the `.env` file, so a typo there fails at startup. Note that the same typo passed as an environment variable is silently ignored instead — that is `pydantic-settings` behaviour, and it means the Docker path below, which injects configuration through the environment, does not get this protection.
+
+Every expected failure is a message and an exit code rather than a traceback: an unadmitted hotkey, an unreachable control plane, a directive this build cannot use, a missing wallet, a malformed `.env`.
 
 ```sh
 enclave-validator preflight
 ```
 
-Preflight refuses to pass if the default model is not priced by the snapshot, if a configured family is unknown, or if the provider credential is missing outside dry run.
+Preflight signs a request with your hotkey, fetches the directive, verifies the owner signature, and prints the parameters the round will actually run under, including the worst case spend. It fails if this hotkey is not admitted, if the signature does not verify, if the provider credential is missing outside dry run, or if the directive enables an environment family this build cannot generate. Because it exercises the real admission path, a passing preflight means the daemon will start.
 
 ## Running it
 
@@ -80,6 +83,14 @@ enclave-validator run
 That is the whole operation. The daemon runs two independent loops.
 
 The **scoring loop** fetches the signed directive, verifies the owner signature itself, and refuses to continue if this validator is not admitted or is below the network's `min_mechanism_version`. When a round is due it discovers submissions from on chain commitments, checks each reveal against its commitment and its payment against the chain, opens a round, and evaluates every admitted submission while holding the round lock.
+
+The prices a round is scored against are read off the directive once, when the round is planned, and carried on the plan for the life of the round. A revision landing mid sweep therefore cannot fold a round's early records under one schedule and its later records under another.
+
+### When a new revision takes effect
+
+A directive carries `effective_from_block`. A revision published ahead of its block is held until the chain reaches it, so every validator adopts new prices on the same block rather than whenever its own poll happens to land. Until then the previous revision keeps governing. The last directive that was in force is cached at `state/directive.json` and re-verified against the owner key on load, so a brief control plane outage does not strand a validator without parameters; the cache is not a trust boundary, and a tampered file fails the same signature check a fetched one does.
+
+`emissions_paused` is the exception: it is honoured from the newest revision immediately, without waiting for a block. A kill switch that waits is not a kill switch.
 
 The **weight loop** runs on its own schedule. This separation is deliberate: a sweep across a full field can take hours, and a weight cadence tied to it would starve chain updates whenever the queue is busy.
 
@@ -102,6 +113,8 @@ enclave-validator open-round round-042 "$ENTROPY" --opened-at 2026-01-01T00:00:0
 ```
 
 `ENTROPY` must be fixed only after submissions close. A block hash from the closing block is the intended source. Supplying entropy that existed earlier destroys the unpredictability guarantee, because a miner could then have built against the instances.
+
+This reads its prices, families, instance count, and scoring parameters from the directive, exactly as the daemon does. `--local-snapshot` prices from `ENCLAVE_PRICE_SNAPSHOT` instead; it exists for debugging, it warns when used, and a round opened that way will not agree with the field.
 
 Opening writes the header, fixes the seed, and stores the audit key beside the ledger. The header refuses to be rewritten with different contents, so re opening a round is safe and re opening it with different parameters is not possible.
 
@@ -135,7 +148,7 @@ enclave-score score  ./state/ledger round-042 --json
 | Yields pinned at `1 / B_min` | Spend is at or below the denominator floor. Either the environment is too cheap to discriminate or metering is not counting something. |
 | Yields far above peers | Check `crossed_relay` on that submission's records. An answer that never crossed the relay should already be a protocol violation. |
 | Weights refused | `set_weights` returns rather than raises on some failures. The chain adapter interprets the return value; a rejection is surfaced as `WeightPublicationError` rather than logged as success. |
-| Validator disagrees with peers | Nondeterminism. Compare `header.digest()` and the price snapshot digest first; a differing snapshot means the two validators priced differently. |
+| Validator disagrees with peers | Compare `header.digest()` and the directive revision first. Prices now arrive signed, so a differing snapshot digest means the two validators were on different revisions when they opened, not that one was misconfigured. Check `effective_from_block` and whether one of them was running from the cached directive. |
 
 `excluded` deserves particular attention. It counts instances dropped as infrastructure faults, and a number that climbs is a validator problem being quietly absorbed rather than charged to submissions.
 

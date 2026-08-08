@@ -160,14 +160,16 @@ You run the round loop: fix a seed after submissions close, generate instances, 
 ```sh
 pip install "enclave-ai[validator] @ git+https://github.com/LumenLabs-io/enclave-subnet"
 
-cp .env.example .env                  # wallet, netuid, provider credential, model schedule
-enclave-validator preflight           # refuses to pass on a misconfiguration
-enclave-validator open-round <id> <entropy> --opened-at <iso8601>
+cp .env.example .env                  # wallet, netuid, control plane, provider credential
+enclave-validator preflight           # fetches the directive and verifies it
+enclave-validator run                 # scoring loop and weight loop
 ```
 
 > **Entropy must be fixed only after submissions close.** A block hash from the closing block is the intended source. Supplying anything that existed earlier destroys the guarantee that instances are unpredictable, which is the guarantee the rest of the design rests on.
 
-**Requirements.** Linux, Docker, and a provider credential with headroom for a worst case round. Deployment, cadence, resource control, and how to read a round that looks wrong are in [docs/validator-guide.md](docs/validator-guide.md).
+**You do not configure what a score means.** The model schedule, the default model, the families, the instance count, and every scoring parameter arrive in the owner signed directive, and the round header records the digest of the schedule that priced the round. Prices are the denominator of every yield, so leaving them to local configuration would make two validators disagreeing a matter of who typed what.
+
+**Requirements.** Linux, Docker, a hotkey admitted by the subnet owner, and a provider credential with headroom for a worst case round. Deployment, cadence, resource control, and how to read a round that looks wrong are in [docs/validator-guide.md](docs/validator-guide.md).
 
 ---
 

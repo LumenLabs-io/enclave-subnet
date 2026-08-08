@@ -6,10 +6,10 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Read by the pre-update hook, not by the validator itself.
       ENCLAVE_STATE_ROOT: /var/lib/enclave
       ENCLAVE_LEDGER_ROOT: /var/lib/enclave/ledger
       ENCLAVE_SOCKET_ROOT: /var/lib/enclave/sockets
-      ENCLAVE_PRICE_SNAPSHOT: /var/lib/enclave/prices.json
     volumes:
       - enclave-state:/var/lib/enclave
       - ${BITTENSOR_DIR:-~/.bittensor}:/root/.bittensor:ro

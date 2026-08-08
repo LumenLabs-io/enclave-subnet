@@ -57,7 +57,11 @@ Missing evidence is failure. A record that cannot be verified is not scored opti
 
 ## Configuration is explicit, typed, and inert
 
-Runtime configuration is a `pydantic-settings` model with no defaults that would silently change scoring. Anything affecting a score, meaning the spend cap, the failure penalty, the denominator floor, the price snapshot, and the audit rate, is part of the signed round header rather than an operator preference. An operator can change what their validator spends and how it logs; they cannot change what a score means without that being visible on chain.
+Runtime configuration is a `pydantic-settings` model with no defaults that would silently change scoring. Anything affecting a score, meaning the price snapshot, the default model, the families, the instance count, the spend cap, the failure penalty, the denominator floor, and the audit rate, arrives in the owner signed directive and is pinned into the round header. It is never an operator setting.
+
+The distinction that matters is between a parameter being *visible* and being *shared*. Recording a digest in the header makes a divergence detectable after the fact; taking the value from a signed directive makes it impossible in the first place. Prices are the clearest case, because they are the denominator of every yield: leaving them to local configuration would have made two validators disagreeing a question of who typed what, with the header digest available only to prove it afterwards.
+
+An operator can change what their validator spends on hardware and how it logs. They cannot change what a score means.
 
 ## Errors are typed and narrow
 

@@ -18,9 +18,9 @@ RUN pip install --no-cache-dir ".[validator]"
 COPY deploy/validator/pre-update.sh /usr/local/bin/enclave-pre-update
 RUN chmod +x /usr/local/bin/enclave-pre-update
 
+# Prices arrive in the signed directive, so there is no snapshot file to mount.
 ENV ENCLAVE_LEDGER_ROOT=/var/lib/enclave/ledger \
-    ENCLAVE_SOCKET_ROOT=/var/lib/enclave/sockets \
-    ENCLAVE_PRICE_SNAPSHOT=/var/lib/enclave/prices.json
+    ENCLAVE_SOCKET_ROOT=/var/lib/enclave/sockets
 
 VOLUME ["/var/lib/enclave"]
 
