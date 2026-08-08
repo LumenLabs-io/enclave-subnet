@@ -60,6 +60,10 @@ class ControlPlane:
         self._mechanism_version = mechanism_version
         self._client = client or httpx.Client(timeout=_TIMEOUT, follow_redirects=False)
 
+    @property
+    def hotkey(self) -> str:
+        return self._hotkey
+
     def close(self) -> None:
         self._client.close()
 
@@ -105,13 +109,32 @@ class ControlPlane:
         except Exception:
             return response.text[:200]
 
-    def directive(self) -> Directive:
-        payload = self._get("/v1/directive")
-        directive = verify_directive(
-            payload.get("payload", {}), str(payload.get("signature", "")), self._owner
-        )
+    def verify(self, payload: Mapping[str, Any], signature: str) -> Directive:
+        """Check a directive against the owner key without fetching it.
+
+        Used for the on-disk cache, which is re-verified on load rather than trusted for
+        having been written by this process.
+        """
+        return verify_directive(payload, signature, self._owner)
+
+    def signed_directive(self) -> tuple[Directive, dict[str, Any], str]:
+        """The current directive along with the exact bytes it was signed as.
+
+        The caller needs the raw payload to cache it, since re-serialising a parsed
+        directive would not reproduce the signed bytes.
+        """
+        response = self._get("/v1/directive")
+        payload = response.get("payload", {})
+        if not isinstance(payload, dict):
+            raise ProtocolError("/v1/directive returned a non-object payload")
+        signature = str(response.get("signature", ""))
+
+        directive = self.verify(payload, signature)
         directive.assert_runnable(self._mechanism_version, self._netuid)
-        return directive
+        return directive, payload, signature
+
+    def directive(self) -> Directive:
+        return self.signed_directive()[0]
 
     def admitted(self) -> bool:
         return bool(self._get("/v1/admission").get("admitted", False))

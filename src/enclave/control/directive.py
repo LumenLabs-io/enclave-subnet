@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final
 
-from enclave.errors import ConfigError, ProtocolError
+from enclave.errors import ConfigError, PricingError, ProtocolError
+from enclave.relay.pricing import PriceSnapshot
 
 __all__ = [
     "DIRECTIVE_DOMAIN",
@@ -53,10 +54,30 @@ class Directive:
     audit_rate: Decimal
     reserved_hotkey: str
     reserved_share: Decimal
+    price_snapshot: PriceSnapshot
+    default_model: str
     digest: str
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> Directive:
+        raw_snapshot = payload.get("price_snapshot")
+        if not isinstance(raw_snapshot, Mapping):
+            raise ProtocolError(
+                "directive carries no price_snapshot; the model schedule is the denominator "
+                "of every yield, so it must arrive signed rather than from local configuration"
+            )
+        try:
+            snapshot = PriceSnapshot.from_json(raw_snapshot)
+        except PricingError as exc:
+            raise ProtocolError(f"directive price snapshot is invalid: {exc}") from exc
+
+        default_model = str(payload.get("default_model", ""))
+        if default_model not in snapshot.selectable:
+            raise ProtocolError(
+                f"directive default_model {default_model!r} is not priced by snapshot "
+                f"{snapshot.snapshot_id}; priced models are {', '.join(snapshot.selectable)}"
+            )
+
         try:
             return cls(
                 revision=int(payload["revision"]),
@@ -75,10 +96,21 @@ class Directive:
                 audit_rate=Decimal(str(payload.get("audit_rate", "0"))),
                 reserved_hotkey=str(payload.get("reserved_hotkey", "")),
                 reserved_share=Decimal(str(payload.get("reserved_share", "0"))),
+                price_snapshot=snapshot,
+                default_model=default_model,
                 digest=digest_of(payload),
             )
         except (KeyError, ValueError, ArithmeticError) as exc:
             raise ProtocolError(f"directive payload is malformed: {exc}") from exc
+
+    def effective_at(self, block: int) -> bool:
+        """Whether this revision governs scoring at ``block``.
+
+        Prices and scoring parameters must change on the same block for every validator,
+        not whenever each one's poll happens to land, so a revision published ahead of its
+        block is held until the chain reaches it.
+        """
+        return block >= self.effective_from_block
 
     def assert_runnable(self, mechanism_version: int, netuid: int) -> None:
         if self.netuid != netuid:

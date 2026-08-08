@@ -6,6 +6,18 @@ from typing import Final
 NETUID: Final = 92
 SUBTENSOR_NETWORK: Final = "finney"
 
+# The control plane and the key that signs its directives are network identity, not
+# operator configuration. They are compiled in deliberately.
+#
+# A directive decides the prices, the default model, the families, and every scoring
+# parameter, so a validator that could point itself at another control plane, or trust
+# another signing key, could grant itself arbitrary network parameters and still call
+# itself an Enclave validator. Making these settings would put that one env var edit
+# away. Changing them now means shipping a fork, which is visible and which diverges
+# from consensus rather than quietly redefining it.
+CONTROL_PLANE_URL: Final = "https://api.nclv.io"
+OWNER_PUBLIC_KEY: Final = "5F4pTG5AzJwVoRUw97qPCVYAXUPthKTRoKLtKCsVbpccVKkg"
+
 RAO_PER_TAO: Final = 1_000_000_000
 UPLOAD_FEE_RAO: Final = 35_000_000
 

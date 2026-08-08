@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from enclave.constants import NETUID
+from enclave.constants import CONTROL_PLANE_URL, NETUID, OWNER_PUBLIC_KEY
 from enclave.errors import ConfigError
 
 __all__ = ["ValidatorSettings"]
@@ -25,13 +25,20 @@ class ValidatorSettings(BaseSettings):
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")
 
-    control_plane_url: str = Field(default="")
-    owner_public_key: str = Field(default="")
+    # Accepted so that an existing .env still parses, but not honoured. The values the
+    # code uses are the compiled constants; anything else here is refused by
+    # assert_ready rather than silently overriding network identity.
+    control_plane_url: str = Field(default=CONTROL_PLANE_URL)
+    owner_public_key: str = Field(default=OWNER_PUBLIC_KEY)
 
     ledger_root: Path = Field(default=Path("./state/ledger"))
     socket_root: Path = Field(default=Path("./state/sockets"))
-    price_snapshot: Path = Field(default=Path("./state/prices.json"))
 
+    # Prices, the default model, the families, and the instance count are consensus
+    # critical: they decide what every yield is divided by. They arrive in the owner
+    # signed directive so that no two validators can score the same evidence differently.
+    # These remain only as dry run overrides, where nothing is published.
+    price_snapshot: Path = Field(default=Path("./state/prices.json"))
     families: tuple[str, ...] = Field(default=("archive",))
     instances_per_family: int = Field(default=24, ge=1, le=4096)
     default_model: str = Field(default="")
@@ -64,18 +71,19 @@ class ValidatorSettings(BaseSettings):
 
     def assert_ready(self) -> None:
         problems: list[str] = []
-        if not self.control_plane_url:
-            problems.append("ENCLAVE_CONTROL_PLANE_URL must point at the admission service")
-        if not self.owner_public_key:
+        if self.control_plane_url != CONTROL_PLANE_URL:
             problems.append(
-                "ENCLAVE_OWNER_PUBLIC_KEY must be set; without it no directive can be trusted"
+                f"ENCLAVE_CONTROL_PLANE_URL cannot be overridden. This build talks to "
+                f"{CONTROL_PLANE_URL}; remove the line from your .env"
             )
-        if not self.default_model:
-            problems.append("ENCLAVE_DEFAULT_MODEL must name a model priced by the snapshot")
+        if self.owner_public_key != OWNER_PUBLIC_KEY:
+            problems.append(
+                f"ENCLAVE_OWNER_PUBLIC_KEY cannot be overridden. This build trusts "
+                f"{OWNER_PUBLIC_KEY}; remove the line from your .env. Trusting another key "
+                "would mean accepting network parameters this subnet's owner never signed"
+            )
         if not self.dry_run and not self.provider_api_key:
             problems.append("ENCLAVE_PROVIDER_API_KEY is required unless ENCLAVE_DRY_RUN is set")
-        if not self.price_snapshot.exists():
-            problems.append(f"price snapshot {self.price_snapshot} does not exist")
         if problems:
             raise ConfigError(
                 "validator preflight failed:\n  - " + "\n  - ".join(problems)

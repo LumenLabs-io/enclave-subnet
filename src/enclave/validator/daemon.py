@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+import httpx
 
 from enclave.chain.client import ChainClient
 from enclave.chain.payment import PaymentReader
@@ -13,9 +18,8 @@ from enclave.constants import MECHANISM_VERSION
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import derive_seed
-from enclave.errors import ConfigError, EnclaveError, ProtocolError
+from enclave.errors import ChainError, ConfigError, EnclaveError, ProtocolError
 from enclave.ledger.store import Ledger
-from enclave.relay.pricing import PriceSnapshot
 from enclave.relay.providers import Provider, TokenCounter
 from enclave.sandbox.runner import Runner
 from enclave.sandbox.spec import Limits
@@ -41,7 +45,6 @@ _MAX_BACKOFF_SECONDS = 600.0
 @dataclass(frozen=True, slots=True)
 class DaemonConfig:
     netuid: int
-    default_model: str
     socket_root: Path
     state_root: Path
     round_interval_seconds: int = 7200
@@ -60,10 +63,14 @@ class Validator:
     runner: Runner
     provider: Provider
     counter: TokenCounter
-    snapshot: PriceSnapshot
     payment_reader: PaymentReader | None = None
     _stop: asyncio.Event = field(default_factory=asyncio.Event)
     _last_round_at: float = 0.0
+    # The newest revision the control plane has served, which may not be effective yet,
+    # and the signed bytes it arrived as.
+    _latest: Directive | None = None
+    _pending_signed: tuple[dict[str, Any], str] | None = None
+    # The revision currently governing scoring.
     _directive: Directive | None = None
 
     def stop(self) -> None:
@@ -73,18 +80,101 @@ class Validator:
         with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._stop.wait(), timeout=seconds)
 
-    def _refresh_directive(self) -> Directive:
-        directive = self.control.directive()
-        if self._directive is None or directive.revision != self._directive.revision:
+    @property
+    def _cache_path(self) -> Path:
+        return self.config.state_root / "directive.json"
+
+    def _write_cache(self, payload: Mapping[str, Any], signature: str) -> None:
+        try:
+            self.config.state_root.mkdir(parents=True, exist_ok=True)
+            self._cache_path.write_text(
+                json.dumps({"payload": dict(payload), "signature": signature}),
+                encoding="utf-8",
+            )
+        except OSError:
+            log.warning("could not cache the directive to %s", self._cache_path)
+
+    def _read_cache(self) -> Directive | None:
+        """The last directive that was in force here, re-verified on load.
+
+        The cache is not a trust boundary. It is checked against the owner key exactly as
+        a fetched directive is, so a tampered file fails the same signature check.
+        """
+        try:
+            raw = json.loads(self._cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        try:
+            directive = self.control.verify(raw.get("payload", {}), str(raw.get("signature", "")))
+            directive.assert_runnable(self.config.mechanism_version, self.config.netuid)
+        except EnclaveError:
+            log.warning("the cached directive no longer verifies; ignoring it")
+            return None
+        return directive
+
+    def _fetch_directive(self) -> Directive:
+        directive, payload, signature = self.control.signed_directive()
+        if self._latest is None or directive.revision != self._latest.revision:
             log.info(
-                "directive revision %d in force (fee %d rao, cap %s, paused %s)",
+                "directive revision %d served (fee %d rao, cap %s, paused %s, "
+                "effective from block %d, prices %s)",
                 directive.revision,
                 directive.upload_fee_rao,
                 directive.spend_cap,
                 directive.emissions_paused,
+                directive.effective_from_block,
+                directive.price_snapshot.snapshot_id,
+            )
+        self._latest = directive
+        self._pending_signed = (dict(payload), signature)
+        return directive
+
+    def _adopt(self, directive: Directive) -> Directive:
+        if self._directive is None or self._directive.revision != directive.revision:
+            log.info(
+                "revision %d is now in force (prices %s, default model %s)",
+                directive.revision,
+                directive.price_snapshot.snapshot_id,
+                directive.default_model,
             )
         self._directive = directive
+        if self._pending_signed is not None and self._latest is directive:
+            self._write_cache(*self._pending_signed)
         return directive
+
+    def _in_force(self, block: int) -> Directive | None:
+        """The revision that governs scoring at ``block``.
+
+        A revision published ahead of its effective block is held back so that every
+        validator adopts new prices on the same block rather than whenever its own poll
+        happens to land.
+        """
+        candidate = self._latest
+        if candidate is None:
+            return None
+        if candidate.effective_at(block):
+            return self._adopt(candidate)
+
+        previous = self._directive or self._read_cache()
+        if previous is not None and previous.effective_at(block):
+            log.info(
+                "revision %d is not effective until block %d (chain at %d); "
+                "scoring under revision %d until then",
+                candidate.revision,
+                candidate.effective_from_block,
+                block,
+                previous.revision,
+            )
+            return previous
+
+        log.info(
+            "revision %d is not effective until block %d (chain at %d) and no earlier "
+            "revision is in force here; not opening a round",
+            candidate.revision,
+            candidate.effective_from_block,
+            block,
+        )
+        return None
 
     def _settled_round(self) -> str | None:
         rounds = [r for r in self.ledger.rounds() if self.ledger.records(r)]
@@ -92,8 +182,14 @@ class Validator:
             return None
         return sorted(rounds)[-1]
 
-    async def _open_and_evaluate(self, directive: Directive) -> None:
-        entropy = str(self.chain.metagraph().block)
+    async def _open_and_evaluate(self) -> None:
+        # One metagraph read serves both the entropy and the effective-block decision.
+        block = self.chain.metagraph().block
+        directive = self._in_force(block)
+        if directive is None:
+            return
+
+        entropy = str(block)
         round_id = derive_seed(str(self.config.netuid), entropy, str(time.time()))[:16]
 
         candidates = discover(
@@ -115,10 +211,14 @@ class Validator:
             round_id=round_id,
             entropy=entropy,
             opened_at=str(time.time()),
-            snapshot=self.snapshot,
+            snapshot=directive.price_snapshot,
             families=directive.families,
             instances_per_family=directive.instances_per_family,
+            default_model=directive.default_model,
             spend_cap=directive.spend_cap,
+            failure_penalty=directive.failure_penalty,
+            denominator_floor=directive.denominator_floor,
+            audit_rate=directive.audit_rate,
         )
         self.ledger.open_round(plan.header)
         (self.ledger.root / round_id / "audit-key.hex").write_text(
@@ -143,14 +243,15 @@ class Validator:
                         runner=self.runner,
                         provider=self.provider,
                         counter=self.counter,
-                        snapshot=self.snapshot,
                         socket_root=self.config.socket_root,
-                        default_model=self.config.default_model,
                         limits=self.config.limits,
                     )
-                except EnclaveError:
+                except Exception:
+                    # One submission failing is that submission's problem. Aborting the
+                    # round here would deny every other submission a score for it.
                     log.exception("submission %s failed to evaluate", submission.submission_id[:12])
-                with contextlib.suppress(EnclaveError):
+                # A heartbeat is telemetry. It must never be able to abandon a round.
+                with contextlib.suppress(EnclaveError, OSError, httpx.HTTPError):
                     self.control.heartbeat(round_id=round_id, note="evaluating")
 
         self._last_round_at = time.monotonic()
@@ -160,24 +261,44 @@ class Validator:
         backoff = _BACKOFF_SECONDS
         while not self._stop.is_set():
             try:
-                directive = self._refresh_directive()
+                latest = self._fetch_directive()
                 backoff = _BACKOFF_SECONDS
 
-                if directive.emissions_paused:
-                    log.info("emissions paused by the operator: %s", directive.pause_reason)
+                # The pause flag is read off the newest revision rather than the one in
+                # force at a block: a kill switch that waits for a block is not one.
+                if latest.emissions_paused:
+                    log.info("emissions paused by the operator: %s", latest.pause_reason)
                 elif time.monotonic() - self._last_round_at >= self.config.round_interval_seconds:
-                    await self._open_and_evaluate(directive)
+                    await self._open_and_evaluate()
 
-                with contextlib.suppress(EnclaveError):
+                with contextlib.suppress(EnclaveError, OSError, httpx.HTTPError):
                     self.control.heartbeat(note="idle")
 
             except ConfigError:
+                # Not admitted, below the required mechanism version, or serving the
+                # wrong netuid. Recoverable only by an operator, so back off rather than
+                # hammer the control plane.
                 log.exception("this validator is not permitted to run right now")
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
                 continue
-            except (ProtocolError, OSError):
-                log.exception("control plane unreachable or malformed")
+            except (ProtocolError, ChainError, OSError, httpx.HTTPError):
+                # httpx does not raise OSError, so the transport errors have to be named
+                # explicitly; catching OSError alone would let a connection failure kill
+                # the loop this handler exists to survive.
+                log.exception("control plane or chain unreachable or malformed")
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+                continue
+            except EnclaveError:
+                log.exception("the scoring loop failed; retrying after backoff")
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+                continue
+            except Exception:
+                # A validator that exits on an unforeseen error stops earning and stops
+                # being counted. Log it loudly and keep the loop alive.
+                log.exception("unexpected error in the scoring loop; continuing")
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
                 continue
@@ -200,11 +321,15 @@ class Validator:
             if self._stop.is_set():
                 return
             try:
-                directive = self._directive
-                if directive is None:
+                if self._latest is None:
                     continue
                 if round_in_flight(self.config.state_root):
                     log.info("a round is in flight; holding the published weights")
+                    continue
+
+                view = self.chain.metagraph()
+                directive = self._in_force(view.block)
+                if directive is None:
                     continue
 
                 settled, earned = self._settled_allocation()
@@ -215,7 +340,6 @@ class Validator:
                     log.info("nothing has been earned and nothing is reserved; not publishing")
                     continue
 
-                view = self.chain.metagraph()
                 if directive.reserved_share > 0 and directive.reserved_hotkey not in set(
                     view.hotkeys()
                 ):
@@ -236,8 +360,10 @@ class Validator:
                     directive.reserved_share,
                     directive.reserved_hotkey[:12] or "nobody",
                 )
-            except EnclaveError:
-                log.exception("weight publication failed")
+            except (EnclaveError, OSError, httpx.HTTPError):
+                log.exception("weight publication failed; holding until the next interval")
+            except Exception:
+                log.exception("unexpected error in the weight loop; continuing")
 
     async def run(self) -> None:
         log.info(

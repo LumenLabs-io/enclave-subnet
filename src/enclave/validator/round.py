@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from enclave.chain.client import ChainClient, MetagraphView
-from enclave.constants import SPEND_CAP
+from enclave.constants import AUDIT_RATE, DENOMINATOR_FLOOR, FAILURE_PENALTY, SPEND_CAP
 from enclave.environments.base import InstanceSpec
 from enclave.environments.prf import AuditKey, derive_seed
 from enclave.environments.registry import build, build_audited, instance_spec
@@ -48,6 +48,8 @@ class RoundPlan:
     header: RoundHeader
     audit_key: AuditKey
     specs: tuple[InstanceSpec, ...]
+    snapshot: PriceSnapshot
+    default_model: str
 
     @property
     def round_id(self) -> str:
@@ -70,9 +72,18 @@ def plan_round(
     snapshot: PriceSnapshot,
     families: Sequence[str],
     instances_per_family: int,
+    default_model: str,
     audit_key: AuditKey | None = None,
     spend_cap: Decimal | None = None,
+    failure_penalty: Decimal | None = None,
+    denominator_floor: Decimal | None = None,
+    audit_rate: Decimal | None = None,
 ) -> RoundPlan:
+    if default_model not in snapshot.selectable:
+        raise ProtocolError(
+            f"default model {default_model!r} is not priced by snapshot {snapshot.snapshot_id}"
+        )
+
     key = audit_key or AuditKey.generate()
     seed = derive_seed(round_id, entropy)
 
@@ -85,6 +96,9 @@ def plan_round(
         families=tuple(families),
         instances_per_family=instances_per_family,
         spend_cap=SPEND_CAP if spend_cap is None else spend_cap,
+        failure_penalty=FAILURE_PENALTY if failure_penalty is None else failure_penalty,
+        denominator_floor=DENOMINATOR_FLOOR if denominator_floor is None else denominator_floor,
+        audit_rate=AUDIT_RATE if audit_rate is None else audit_rate,
     )
 
     specs = tuple(
@@ -92,7 +106,13 @@ def plan_round(
         for family in sorted(families)
         for ordinal in range(1, instances_per_family + 1)
     )
-    return RoundPlan(header=header, audit_key=key, specs=specs)
+    return RoundPlan(
+        header=header,
+        audit_key=key,
+        specs=specs,
+        snapshot=snapshot,
+        default_model=default_model,
+    )
 
 
 async def evaluate_submission(
@@ -102,12 +122,14 @@ async def evaluate_submission(
     runner: Runner,
     provider: Provider,
     counter: TokenCounter,
-    snapshot: PriceSnapshot,
     socket_root: Path,
-    default_model: str,
     limits: Limits | None = None,
 ) -> tuple[EpisodeResult, ...]:
+    # Prices and the default model come off the plan rather than from live configuration.
+    # A directive revision landing mid round would otherwise fold this round's early
+    # records under one schedule and its later records under another.
     header = plan.header
+    snapshot = plan.snapshot
     results: list[EpisodeResult] = []
 
     for spec in plan.specs:
@@ -135,7 +157,7 @@ async def evaluate_submission(
             snapshot=snapshot,
             config=EpisodeConfig(
                 spend_cap=header.spend_cap,
-                default_model=default_model,
+                default_model=plan.default_model,
                 round_seed=header.seed,
                 submission_id=submission.submission_id,
                 audited=audited,
