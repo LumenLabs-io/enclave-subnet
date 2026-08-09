@@ -1,8 +1,9 @@
 services:
   validator:
-    image: ${ENCLAVE_IMAGE:-ghcr.io/enclave/enclave-validator:latest}
+    image: ${ENCLAVE_IMAGE:-ghcr.io/lumenlabs-io/enclave-validator:latest}
     container_name: enclave-validator
     restart: unless-stopped
+    command: ["run"]
     env_file:
       - ../../.env
     environment:
