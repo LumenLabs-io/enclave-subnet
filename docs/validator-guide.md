@@ -101,7 +101,9 @@ The directive carries `reserved_hotkey` and `reserved_share`. Where a share is s
 
 The reserved hotkey must be registered on the subnet. If it is not, the weight loop refuses to publish rather than letting the withheld share fall through to the miners it was meant to be withheld from, and says so in the log every interval until the registration lands.
 
-The address itself is never compiled in. It lives in the directive the operator signs, so changing it or winding the share down to zero is a new revision rather than a release.
+The address that governs a running network is never compiled in. It lives in the directive the operator signs, so changing it or winding the share down to zero is a new revision rather than a release.
+
+There is one exception, and it applies only before the network starts. A validator that has never held a directive and has never settled a round has no signed instruction to follow, and would otherwise publish nothing at all. In that state it sends the whole vector to a compiled in fallback reserved hotkey. Any directive overrides it, live or cached, so the constant stops being consulted the moment revision 1 exists and can never displace a signed instruction on a running network. A validator that has scored even one round holds its weights instead when the control plane goes quiet, because by then silence is an outage rather than a network that has not launched.
 
 ## Opening a round by hand
 

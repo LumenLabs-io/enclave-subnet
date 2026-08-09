@@ -18,6 +18,11 @@ SUBTENSOR_NETWORK: Final = "finney"
 CONTROL_PLANE_URL: Final = "https://api.nclv.io"
 OWNER_PUBLIC_KEY: Final = "5F4pTG5AzJwVoRUw97qPCVYAXUPthKTRoKLtKCsVbpccVKkg"
 
+# Used only by a validator that has never held a directive and has never scored a round,
+# which is the state before the first revision is published. Any directive, live or
+# cached, overrides it, so this address stops being consulted the moment one exists.
+FALLBACK_RESERVED_HOTKEY: Final = "5DP4WFrDE57oxqwHDPidMBiB6Ucb8LcELKp7QxhoCpVZmBAF"
+
 RAO_PER_TAO: Final = 1_000_000_000
 UPLOAD_FEE_RAO: Final = 35_000_000
 

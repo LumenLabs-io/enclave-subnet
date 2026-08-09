@@ -7,6 +7,7 @@ import logging
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ import httpx
 
 from enclave.chain.client import ChainClient
 from enclave.chain.payment import PaymentReader
-from enclave.constants import MECHANISM_VERSION
+from enclave.constants import FALLBACK_RESERVED_HOTKEY, MECHANISM_VERSION
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import derive_seed
@@ -72,6 +73,9 @@ class Validator:
     _pending_signed: tuple[dict[str, Any], str] | None = None
     # The revision currently governing scoring.
     _directive: Directive | None = None
+    # The last control plane problem reported, so a standing condition is logged once
+    # rather than every poll.
+    _last_problem: str = ""
 
     def stop(self) -> None:
         self._stop.set()
@@ -263,6 +267,7 @@ class Validator:
             try:
                 latest = self._fetch_directive()
                 backoff = _BACKOFF_SECONDS
+                self._last_problem = ""
 
                 # The pause flag is read off the newest revision rather than the one in
                 # force at a block: a kill switch that waits for a block is not one.
@@ -282,7 +287,22 @@ class Validator:
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
                 continue
-            except (ProtocolError, ChainError, OSError, httpx.HTTPError):
+            except ProtocolError as exc:
+                # A control plane with nothing to serve yet is an expected state, not a
+                # fault, so it gets one line rather than a traceback every poll.
+                if "no directive has been published" in str(exc):
+                    if self._last_problem != "no-directive":
+                        self._last_problem = "no-directive"
+                        log.info(
+                            "no directive has been published yet; scoring is idle and the "
+                            "whole weight vector goes to the reserved hotkey until there is one"
+                        )
+                else:
+                    log.exception("control plane returned a response this build cannot use")
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+                continue
+            except (ChainError, OSError, httpx.HTTPError):
                 # httpx does not raise OSError, so the transport errors have to be named
                 # explicitly; catching OSError alone would let a connection failure kill
                 # the loop this handler exists to survive.
@@ -315,21 +335,50 @@ class Validator:
             return settled, empty
         return settled, allocate_weights(scores)
 
+    def _publish_unconfigured(self, view: Any) -> None:
+        """Before the first directive exists, send the whole vector to the reserved hotkey.
+
+        Only a validator that has never held a directive and has never settled a round
+        takes this path. A cached revision or any scored round means the network is
+        already running, and holding is then the correct response to a control plane
+        that has gone quiet.
+        """
+        if self._read_cache() is not None or self._settled_round() is not None:
+            return
+        if FALLBACK_RESERVED_HOTKEY not in set(view.hotkeys()):
+            log.error(
+                "no directive is in force and the reserved hotkey %s is not registered "
+                "on netuid %d; holding weights until one of those changes",
+                FALLBACK_RESERVED_HOTKEY[:12],
+                self.config.netuid,
+            )
+            return
+        allocation = apply_reserved_share(
+            Allocation(ppm={}, schedule=[], ranked=[]),
+            FALLBACK_RESERVED_HOTKEY,
+            Decimal(1),
+        )
+        publish(self.chain, allocation, view)
+        log.warning(
+            "no directive has been published; the whole weight vector goes to %s "
+            "until one is",
+            FALLBACK_RESERVED_HOTKEY[:12],
+        )
+
     async def weight_loop(self) -> None:
         while not self._stop.is_set():
             await self._sleep(self.config.weight_interval_seconds)
             if self._stop.is_set():
                 return
             try:
-                if self._latest is None:
-                    continue
                 if round_in_flight(self.config.state_root):
                     log.info("a round is in flight; holding the published weights")
                     continue
 
                 view = self.chain.metagraph()
-                directive = self._in_force(view.block)
+                directive = self._in_force(view.block) if self._latest is not None else None
                 if directive is None:
+                    self._publish_unconfigured(view)
                     continue
 
                 settled, earned = self._settled_allocation()
