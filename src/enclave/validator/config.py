@@ -43,9 +43,6 @@ class ValidatorSettings(BaseSettings):
     instances_per_family: int = Field(default=24, ge=1, le=4096)
     default_model: str = Field(default="")
 
-    provider_base_url: str = Field(default="")
-    provider_api_key: str = Field(default="", repr=False)
-
     container_cpus: Decimal = Field(default=Decimal("2.0"))
     container_memory_gib: int = Field(default=4, ge=1, le=256)
     container_wall_clock_seconds: int = Field(default=900, ge=30, le=86_400)
@@ -82,8 +79,6 @@ class ValidatorSettings(BaseSettings):
                 f"{OWNER_PUBLIC_KEY}; remove the line from your .env. Trusting another key "
                 "would mean accepting network parameters this subnet's owner never signed"
             )
-        if not self.dry_run and not self.provider_api_key:
-            problems.append("ENCLAVE_PROVIDER_API_KEY is required unless ENCLAVE_DRY_RUN is set")
         if problems:
             raise ConfigError(
                 "validator preflight failed:\n  - " + "\n  - ".join(problems)

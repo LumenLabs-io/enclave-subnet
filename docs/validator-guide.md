@@ -8,7 +8,7 @@ Running a validator. What it needs, what it does each round, and what to check w
 - Docker, with the validator's user able to reach the daemon.
 - Python 3.11 or newer.
 - A hotkey registered on netuid 92, **and admitted by the subnet owner**. Admission is out of band: the control plane answers `403` to a hotkey that is not on the list, and the validator will not score without a directive.
-- A provider credential with enough headroom for `submissions * instances * spend_cap` in the worst case.
+- No provider credential. Inference is paid for by the submission that uses it, and the relay meters what crosses it, so a validator never holds a provider key and never carries the field's inference cost.
 - An accurate clock. Nothing in scoring reads the wall clock, but chain calls and provider calls both care.
 - Outbound access to the chain endpoint, the control plane, and the provider. The sandbox itself needs none, by construction.
 
@@ -45,9 +45,6 @@ cp .env.example .env
 ENCLAVE_WALLET_NAME=validator
 ENCLAVE_WALLET_HOTKEY=default
 
-ENCLAVE_PROVIDER_BASE_URL=
-ENCLAVE_PROVIDER_API_KEY=
-
 ENCLAVE_LEDGER_ROOT=./state/ledger
 ENCLAVE_SOCKET_ROOT=./state/sockets
 
@@ -72,7 +69,7 @@ Every expected failure is a message and an exit code rather than a traceback: an
 enclave-validator preflight
 ```
 
-Preflight signs a request with your hotkey, fetches the directive, verifies the owner signature, and prints the parameters the round will actually run under, including the worst case spend. It fails if this hotkey is not admitted, if the signature does not verify, if the provider credential is missing outside dry run, or if the directive enables an environment family this build cannot generate. Because it exercises the real admission path, a passing preflight means the daemon will start.
+Preflight signs a request with your hotkey, fetches the directive, verifies the owner signature, and prints the parameters the round will actually run under, including the worst case spend. It fails if this hotkey is not admitted, if the signature does not verify, or if the directive enables an environment family this build cannot generate. Because it exercises the real admission path, a passing preflight means the daemon will start.
 
 ## Running it
 
@@ -207,6 +204,6 @@ Weights are set from the rolling ledger, not from the round currently being eval
 
 ## Cost control
 
-The worst case spend for a round is `submissions * instances * spend_cap`. That number should be computed before opening a round, not discovered afterwards.
+The worst case spend for a round is `submissions * instances * spend_cap`, and it falls on the submissions, not on you. A validator meters what crosses the relay and prices it from the directive; it never pays for it. The number still matters, because it is what a miner is committing to when they submit, and because the spend cap is the denominator every yield is divided by.
 
 Dry run mode substitutes a deterministic provider that makes no network call and costs nothing. It exercises the entire path, including metering and scoring, and is the correct way to validate a configuration change before spending real money on it.

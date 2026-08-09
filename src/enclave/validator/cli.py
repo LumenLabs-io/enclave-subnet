@@ -48,14 +48,11 @@ def _settings() -> ValidatorSettings:
     return settings
 
 
-def _provider(settings: ValidatorSettings) -> Provider:
-    from enclave.relay.providers import DeterministicProvider
-
-    if not settings.provider_base_url:
-        raise typer.BadParameter(
-            "ENCLAVE_PROVIDER_BASE_URL must be set, or pass --dry-run to use a stub provider"
-        )
-    return DeterministicProvider(seed=settings.provider_base_url)
+def _provider() -> Provider:
+    raise typer.BadParameter(
+        "inference is paid for by the submission that uses it, not by the validator. "
+        "The per submission provider is not implemented yet, so pass --dry-run"
+    )
 
 
 def _snapshot(path: Path) -> PriceSnapshot:
@@ -229,7 +226,7 @@ def run(
         chain=BittensorChain(netuid=settings.netuid, wallet=wallet, subtensor=subtensor),
         ledger=Ledger(settings.ledger_root),
         runner=DockerRunner(),
-        provider=DeterministicProvider(seed="dry-run") if dry_run else _provider(settings),
+        provider=DeterministicProvider(seed="dry-run") if dry_run else _provider(),
         counter=HeuristicTokenCounter(),
     )
 
