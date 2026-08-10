@@ -113,6 +113,14 @@ def _directive(settings: ValidatorSettings) -> Directive:
             f"Ask the operator to admit {control.hotkey}, then run preflight again."
         )
     except ProtocolError as exc:
+        if "no directive has been published" in str(exc):
+            _fail(
+                "the subnet owner has not published a directive yet, so there are no "
+                "prices or scoring parameters to run under. Nothing is wrong with this "
+                "validator: admission succeeded, or the control plane would have said "
+                "so instead. Wait for the owner to publish revision 1, then run "
+                "preflight again."
+            )
         _fail(f"the control plane returned a directive this build cannot use: {exc}")
     except httpx.HTTPError as exc:
         _fail(
