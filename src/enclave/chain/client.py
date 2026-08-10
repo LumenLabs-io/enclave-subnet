@@ -84,6 +84,18 @@ class OfflineChain:
         self.published.append((tuple(uids), tuple(weights_ppm)))
 
 
+def _stake_of(neuron: Any) -> float:
+    for name in ("total_stake", "alpha_stake", "stake"):
+        value = getattr(neuron, name, None)
+        if value is None:
+            continue
+        try:
+            return float(getattr(value, "tao", value))
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
 class BittensorChain:
     def __init__(self, netuid: int, wallet: Any, subtensor: Any) -> None:
         self._netuid = netuid
@@ -92,15 +104,17 @@ class BittensorChain:
 
     def metagraph(self) -> MetagraphView:
         try:
-            graph = self._subtensor.metagraph(netuid=self._netuid)
+            graph = self._subtensor.subnets.metagraph(self._netuid)
         except Exception as exc:
             raise ChainError(f"could not read metagraph for netuid {self._netuid}") from exc
+        if graph is None:
+            raise ChainError(f"netuid {self._netuid} was not found on chain")
 
         neurons = tuple(
             Neuron(
                 uid=int(neuron.uid),
                 hotkey=str(neuron.hotkey),
-                stake=float(getattr(neuron, "stake", 0.0)),
+                stake=_stake_of(neuron),
                 validator_permit=bool(getattr(neuron, "validator_permit", False)),
             )
             for neuron in graph.neurons
@@ -111,7 +125,7 @@ class BittensorChain:
 
     def commitments(self) -> Mapping[str, str]:
         try:
-            raw = self._subtensor.get_all_commitments(netuid=self._netuid)
+            raw = self._subtensor.subnets.commitments(self._netuid)
         except Exception as exc:
             raise ChainError("could not read commitments") from exc
         return {str(k): str(v) for k, v in dict(raw).items()}
@@ -123,15 +137,19 @@ class BittensorChain:
             raise ChainError("commitment publication failed") from exc
 
     def set_weights(self, uids: Sequence[int], weights_ppm: Sequence[int]) -> None:
+        import bittensor
+
         _validate_weights(uids, weights_ppm)
-        normalised = [value / WEIGHT_PPM_TOTAL for value in weights_ppm]
+        uid_weights = {
+            int(uid): value / WEIGHT_PPM_TOTAL
+            for uid, value in zip(uids, weights_ppm, strict=True)
+        }
         try:
-            outcome = self._subtensor.set_weights(
+            outcome = bittensor.set_weights(
+                self._netuid,
+                uid_weights,
                 wallet=self._wallet,
-                netuid=self._netuid,
-                uids=list(uids),
-                weights=normalised,
-                wait_for_inclusion=True,
+                network=getattr(self._subtensor, "network", "finney"),
             )
         except Exception as exc:
             raise WeightPublicationError("set_weights raised") from exc
