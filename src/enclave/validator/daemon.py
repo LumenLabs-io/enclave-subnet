@@ -419,8 +419,14 @@ class Validator:
         log.exception("weight publication failed; holding until the next interval")
 
     async def weight_loop(self) -> None:
+        # The first pass runs immediately. Waiting a full interval before the opening
+        # publication leaves a restarted validator silent while the chain still holds
+        # whatever it voted last, which reads as a stall rather than a cadence.
+        first = True
         while not self._stop.is_set():
-            await self._sleep(self.config.weight_interval_seconds)
+            if not first:
+                await self._sleep(self.config.weight_interval_seconds)
+            first = False
             if self._stop.is_set():
                 return
             try:
