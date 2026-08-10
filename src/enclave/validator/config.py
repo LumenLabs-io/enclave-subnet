@@ -33,6 +33,7 @@ class ValidatorSettings(BaseSettings):
     # below by the subnet's own weight rate limit, so setting it very low on a live
     # validator only produces rejected calls.
     weight_interval_seconds: int = Field(default=1200, ge=30, le=86_400)
+    weight_retry_seconds: int = Field(default=180, ge=10, le=86_400)
     wallet_name: str = Field(default="validator")
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")

@@ -241,6 +241,7 @@ def run(
             state_root=settings.ledger_root.parent,
             fallback_reserved_hotkey=settings.fallback_reserved_hotkey,
             weight_interval_seconds=settings.weight_interval_seconds,
+            weight_retry_seconds=settings.weight_retry_seconds,
             limits=Limits(
                 cpus=settings.container_cpus,
                 memory_bytes=settings.memory_bytes,

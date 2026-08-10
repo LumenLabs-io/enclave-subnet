@@ -70,6 +70,7 @@ class DaemonConfig:
     weight_interval_seconds: int = 1200
     poll_interval_seconds: int = 60
     fallback_reserved_hotkey: str = FALLBACK_RESERVED_HOTKEY
+    weight_retry_seconds: int = 180
     limits: Limits = field(default_factory=Limits)
     mechanism_version: int = MECHANISM_VERSION
 
@@ -422,11 +423,20 @@ class Validator:
         # The first pass runs immediately. Waiting a full interval before the opening
         # publication leaves a restarted validator silent while the chain still holds
         # whatever it voted last, which reads as a stall rather than a cadence.
+        # A refused publication retries on the shorter interval rather than waiting a
+        # full cadence, because the common refusal is a chain rate limit that clears
+        # part way through one.
         first = True
+        retry = False
         while not self._stop.is_set():
             if not first:
-                await self._sleep(self.config.weight_interval_seconds)
+                await self._sleep(
+                    self.config.weight_retry_seconds
+                    if retry
+                    else self.config.weight_interval_seconds
+                )
             first = False
+            retry = False
             if self._stop.is_set():
                 return
             try:
@@ -470,6 +480,7 @@ class Validator:
                     directive.reserved_hotkey[:12] or "nobody",
                 )
             except WeightPublicationError as exc:
+                retry = True
                 self._note_weight_rejection(exc)
             except (EnclaveError, OSError, httpx.HTTPError):
                 log.exception("weight publication failed; holding until the next interval")
