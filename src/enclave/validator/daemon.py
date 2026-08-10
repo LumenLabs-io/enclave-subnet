@@ -23,7 +23,13 @@ from enclave.constants import (
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import derive_seed
-from enclave.errors import ChainError, ConfigError, EnclaveError, ProtocolError
+from enclave.errors import (
+    ChainError,
+    ConfigError,
+    EnclaveError,
+    ProtocolError,
+    WeightPublicationError,
+)
 from enclave.ledger.store import Ledger
 from enclave.relay.providers import Provider, TokenCounter
 from enclave.sandbox.runner import Runner
@@ -89,6 +95,7 @@ class Validator:
     # The last control plane problem reported, so a standing condition is logged once
     # rather than every poll.
     _last_problem: str = ""
+    _last_weight_problem: str = ""
 
     def stop(self) -> None:
         self._stop.set()
@@ -387,6 +394,30 @@ class Validator:
             _weight_summary(uids, ppm),
         )
 
+    def _note_weight_rejection(self, exc: WeightPublicationError) -> None:
+        """Report a chain refusal as a line rather than a traceback.
+
+        A rate limit is transient and worth seeing each time, because the message
+        carries the retry window. Too little stake, or no permit, is a standing
+        condition an operator has to resolve, so it is logged once until it changes.
+        """
+        detail = str(exc.__cause__ or exc)
+        if "rate limit" in detail:
+            self._last_weight_problem = "rate-limit"
+            log.info("chain rate limit; holding until the next interval: %s", detail)
+            return
+        if "below the chain minimum" in detail or "below the floor" in detail:
+            if self._last_weight_problem != "stake-floor":
+                self._last_weight_problem = "stake-floor"
+                log.error(
+                    "this hotkey holds too little stake to set weights on netuid %d; "
+                    "the chain refused the extrinsic. Stake it, or run from a hotkey "
+                    "that already holds a validator permit",
+                    self.config.netuid,
+                )
+            return
+        log.exception("weight publication failed; holding until the next interval")
+
     async def weight_loop(self) -> None:
         while not self._stop.is_set():
             await self._sleep(self.config.weight_interval_seconds)
@@ -432,6 +463,8 @@ class Validator:
                     directive.reserved_share,
                     directive.reserved_hotkey[:12] or "nobody",
                 )
+            except WeightPublicationError as exc:
+                self._note_weight_rejection(exc)
             except (EnclaveError, OSError, httpx.HTTPError):
                 log.exception("weight publication failed; holding until the next interval")
             except Exception:
