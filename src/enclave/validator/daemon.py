@@ -5,7 +5,7 @@ import contextlib
 import json
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -15,7 +15,11 @@ import httpx
 
 from enclave.chain.client import ChainClient
 from enclave.chain.payment import PaymentReader
-from enclave.constants import FALLBACK_RESERVED_HOTKEY, MECHANISM_VERSION
+from enclave.constants import (
+    FALLBACK_RESERVED_HOTKEY,
+    MECHANISM_VERSION,
+    WEIGHT_PPM_TOTAL,
+)
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import derive_seed
@@ -41,6 +45,14 @@ log = logging.getLogger("enclave.validator")
 
 _BACKOFF_SECONDS = 30.0
 _MAX_BACKOFF_SECONDS = 600.0
+
+
+def _weight_summary(uids: Sequence[int], ppm: Sequence[int], limit: int = 5) -> str:
+    pairs = sorted(zip(uids, ppm, strict=True), key=lambda pair: -pair[1])
+    shown = ", ".join(f"uid {uid}={value / WEIGHT_PPM_TOTAL:.3f}" for uid, value in pairs[:limit])
+    if len(pairs) > limit:
+        shown += f", +{len(pairs) - limit} more"
+    return shown
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,11 +372,14 @@ class Validator:
             reserved,
             Decimal(1),
         )
-        publish(self.chain, allocation, view)
+        uids, ppm = publish(self.chain, allocation, view)
+        if not uids:
+            log.error("no directive published and the reserved allocation resolved to no uid")
+            return
         log.warning(
-            "no directive has been published; the whole weight vector goes to %s "
-            "until one is",
+            "no directive published; weights set to the reserved hotkey %s | %s",
             reserved[:12],
+            _weight_summary(uids, ppm),
         )
 
     async def weight_loop(self) -> None:
@@ -403,11 +418,12 @@ class Validator:
                     )
                     continue
 
-                uids, _ = publish(self.chain, allocation, view)
+                uids, ppm = publish(self.chain, allocation, view)
                 log.info(
-                    "published %d weights from round %s, reserving %s to %s",
-                    len(uids),
+                    "weights set from round %s | %d uid(s): %s | reserving %s to %s",
                     settled or "no settled round",
+                    len(uids),
+                    _weight_summary(uids, ppm),
                     directive.reserved_share,
                     directive.reserved_hotkey[:12] or "nobody",
                 )
