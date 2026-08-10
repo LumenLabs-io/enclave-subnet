@@ -6,7 +6,12 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from enclave.constants import CONTROL_PLANE_URL, NETUID, OWNER_PUBLIC_KEY
+from enclave.constants import (
+    CONTROL_PLANE_URL,
+    FALLBACK_RESERVED_HOTKEY,
+    NETUID,
+    OWNER_PUBLIC_KEY,
+)
 from enclave.errors import ConfigError
 
 __all__ = ["ValidatorSettings"]
@@ -21,6 +26,9 @@ class ValidatorSettings(BaseSettings):
     )
 
     netuid: int = Field(default=NETUID, description="Subnet identifier this validator serves")
+    # Consulted only while no directive has ever been held and no round has settled.
+    # A directive always overrides it, so it cannot displace a signed instruction.
+    fallback_reserved_hotkey: str = Field(default=FALLBACK_RESERVED_HOTKEY)
     wallet_name: str = Field(default="validator")
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")

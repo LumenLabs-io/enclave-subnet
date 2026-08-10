@@ -51,6 +51,7 @@ class DaemonConfig:
     round_interval_seconds: int = 7200
     weight_interval_seconds: int = 1200
     poll_interval_seconds: int = 60
+    fallback_reserved_hotkey: str = FALLBACK_RESERVED_HOTKEY
     limits: Limits = field(default_factory=Limits)
     mechanism_version: int = MECHANISM_VERSION
 
@@ -345,24 +346,25 @@ class Validator:
         """
         if self._read_cache() is not None or self._settled_round() is not None:
             return
-        if FALLBACK_RESERVED_HOTKEY not in set(view.hotkeys()):
+        reserved = self.config.fallback_reserved_hotkey
+        if reserved not in set(view.hotkeys()):
             log.error(
                 "no directive is in force and the reserved hotkey %s is not registered "
                 "on netuid %d; holding weights until one of those changes",
-                FALLBACK_RESERVED_HOTKEY[:12],
+                reserved[:12],
                 self.config.netuid,
             )
             return
         allocation = apply_reserved_share(
             Allocation(ppm={}, schedule=[], ranked=[]),
-            FALLBACK_RESERVED_HOTKEY,
+            reserved,
             Decimal(1),
         )
         publish(self.chain, allocation, view)
         log.warning(
             "no directive has been published; the whole weight vector goes to %s "
             "until one is",
-            FALLBACK_RESERVED_HOTKEY[:12],
+            reserved[:12],
         )
 
     async def weight_loop(self) -> None:

@@ -11,12 +11,7 @@ import typer
 from pydantic import ValidationError
 
 from enclave.chain.commitment import SubmissionCommitment, SubmissionReveal, verify_reveal
-from enclave.constants import (
-    CONTROL_PLANE_URL,
-    FALLBACK_RESERVED_HOTKEY,
-    MECHANISM_VERSION,
-    OWNER_PUBLIC_KEY,
-)
+from enclave.constants import CONTROL_PLANE_URL, MECHANISM_VERSION, OWNER_PUBLIC_KEY
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import AuditKey
@@ -144,7 +139,7 @@ def preflight() -> None:
         typer.echo(f"owner key         {OWNER_PUBLIC_KEY}")
         typer.echo(f"mechanism         {MECHANISM_VERSION}")
         typer.echo("directive         none published")
-        typer.echo(f"reserved hotkey   {FALLBACK_RESERVED_HOTKEY}")
+        typer.echo(f"reserved hotkey   {settings.fallback_reserved_hotkey}")
         typer.echo(f"ledger            {settings.ledger_root}")
         typer.echo(f"dry run           {settings.dry_run}")
         typer.echo("")
@@ -244,6 +239,7 @@ def run(
             netuid=settings.netuid,
             socket_root=settings.socket_root,
             state_root=settings.ledger_root.parent,
+            fallback_reserved_hotkey=settings.fallback_reserved_hotkey,
             limits=Limits(
                 cpus=settings.container_cpus,
                 memory_bytes=settings.memory_bytes,
