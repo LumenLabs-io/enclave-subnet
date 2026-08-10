@@ -11,7 +11,12 @@ import typer
 from pydantic import ValidationError
 
 from enclave.chain.commitment import SubmissionCommitment, SubmissionReveal, verify_reveal
-from enclave.constants import CONTROL_PLANE_URL, MECHANISM_VERSION, OWNER_PUBLIC_KEY
+from enclave.constants import (
+    CONTROL_PLANE_URL,
+    FALLBACK_RESERVED_HOTKEY,
+    MECHANISM_VERSION,
+    OWNER_PUBLIC_KEY,
+)
 from enclave.control.client import ControlPlane
 from enclave.control.directive import Directive
 from enclave.environments.prf import AuditKey
@@ -102,7 +107,7 @@ def _control(settings: ValidatorSettings, wallet: Any = None) -> ControlPlane:
     )
 
 
-def _directive(settings: ValidatorSettings) -> Directive:
+def _directive(settings: ValidatorSettings, *, required: bool = True) -> Directive | None:
     control = _control(settings)
     try:
         return control.directive()
@@ -114,13 +119,9 @@ def _directive(settings: ValidatorSettings) -> Directive:
         )
     except ProtocolError as exc:
         if "no directive has been published" in str(exc):
-            _fail(
-                "the subnet owner has not published a directive yet, so there are no "
-                "prices or scoring parameters to run under. Nothing is wrong with this "
-                "validator: admission succeeded, or the control plane would have said "
-                "so instead. Wait for the owner to publish revision 1, then run "
-                "preflight again."
-            )
+            if not required:
+                return None
+            _fail("no directive is published, so a round has no prices to be scored under")
         _fail(f"the control plane returned a directive this build cannot use: {exc}")
     except httpx.HTTPError as exc:
         _fail(
@@ -135,7 +136,26 @@ def _directive(settings: ValidatorSettings) -> Directive:
 def preflight() -> None:
     """Prove this validator can score a round: admitted, directive verified, prices usable."""
     settings = _settings()
-    directive = _directive(settings)
+    directive = _directive(settings, required=False)
+
+    if directive is None:
+        typer.echo(f"netuid            {settings.netuid}")
+        typer.echo(f"control plane     {CONTROL_PLANE_URL}")
+        typer.echo(f"owner key         {OWNER_PUBLIC_KEY}")
+        typer.echo(f"mechanism         {MECHANISM_VERSION}")
+        typer.echo("directive         none published")
+        typer.echo(f"reserved hotkey   {FALLBACK_RESERVED_HOTKEY}")
+        typer.echo(f"ledger            {settings.ledger_root}")
+        typer.echo(f"dry run           {settings.dry_run}")
+        typer.echo("")
+        typer.echo(
+            "No directive is published. No round can be scored until one is, and the "
+            "daemon will publish the full weight vector to the reserved hotkey in the "
+            "meantime. Admission and configuration are in order."
+        )
+        typer.echo("preflight ok")
+        return
+
     snapshot = directive.price_snapshot
 
     typer.echo(f"netuid            {settings.netuid}")
