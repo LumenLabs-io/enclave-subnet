@@ -372,6 +372,11 @@ class Validator:
             reserved,
             Decimal(1),
         )
+        log.info(
+            "no directive in force; publishing the reserved vector to %s on netuid %d",
+            reserved[:12],
+            self.config.netuid,
+        )
         uids, ppm = publish(self.chain, allocation, view)
         if not uids:
             log.error("no directive published and the reserved allocation resolved to no uid")

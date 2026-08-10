@@ -29,6 +29,10 @@ class ValidatorSettings(BaseSettings):
     # Consulted only while no directive has ever been held and no round has settled.
     # A directive always overrides it, so it cannot displace a signed instruction.
     fallback_reserved_hotkey: str = Field(default=FALLBACK_RESERVED_HOTKEY)
+    # Publication cadence. Lower it while testing; the production default is bounded
+    # below by the subnet's own weight rate limit, so setting it very low on a live
+    # validator only produces rejected calls.
+    weight_interval_seconds: int = Field(default=1200, ge=30, le=86_400)
     wallet_name: str = Field(default="validator")
     wallet_hotkey: str = Field(default="default")
     chain_endpoint: str = Field(default="wss://entrypoint-finney.opentensor.ai:443")
